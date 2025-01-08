@@ -38,12 +38,13 @@ def main():
         "gtf_file", metavar="GTF_FILE", help="GTF file with transcript information."
     )
     args = parser.parse_args()
-    
+
     sample_dirs = [
-        item for item in os.listdir(args.multi_sample_dir)
+        item
+        for item in os.listdir(args.multi_sample_dir)
         if os.path.isdir(os.path.join(args.multi_sample_dir, item))
     ]
-    
+
     for sample_dir in sample_dirs:
         os.system(
             f"tidesurf -o {os.path.join(args.output, sample_dir)} "
