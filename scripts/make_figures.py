@@ -217,6 +217,8 @@ def supplementary_figure_1():
         sub_fig.suptitle(splice_state)
         if splice_state != SPLICE_STATES[0]:
             sub_fig.get_axes()[0].set_ylabel("")
+        for ax in sub_fig.get_axes():
+            ax.axhline(0, color="grey", linestyle="--", zorder=0)
 
     # Pearson correlation between methods
     for sub_fig, splice_state in zip(sub_figs[3:], SPLICE_STATES):
