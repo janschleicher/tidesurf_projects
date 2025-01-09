@@ -102,8 +102,7 @@ def figure_2():
     spliced_corr = read_dataframes("spliced_corr_cellranger")
 
     # Make figure
-    fig_size = (FIG_WIDTH, FIG_WIDTH / 2.5)
-    fig = plt.figure(figsize=fig_size, layout="constrained")
+    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH / 2.5), layout="constrained")
     sub_figs = fig.subfigures(1, 3)
     split_boxplot(sub_figs[0], total_counts[total_counts["genes"] == "all"], "counts")
     split_boxplot(sub_figs[1], counts_diff[counts_diff["genes"] == "all"], "difference")
@@ -132,8 +131,7 @@ def figure_3():
     spliced_unspliced_cosine = read_dataframes("spliced_unspliced_cosine")
 
     # Make figure
-    fig_size = (FIG_WIDTH, FIG_WIDTH)
-    fig = plt.figure(figsize=fig_size, layout="constrained")
+    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH), layout="constrained")
     sub_figs = fig.subfigures(3, 3).ravel()
 
     # Total spliced/unspliced/ambiguous counts per cell
@@ -163,7 +161,7 @@ def figure_3():
         if splice_state != SPLICE_STATES[0]:
             sub_fig.get_axes()[0].set_ylabel("")
 
-    # Pearson correlation between methods
+    # Cosine similarity between methods
     for sub_fig, splice_state in zip(sub_figs[6:], SPLICE_STATES):
         split_boxplot(
             sub_fig,
@@ -196,6 +194,63 @@ def figure_3():
     plt.close()
 
 
+def supplementary_figure_1():
+    # Load all DataFrames
+    spliced_unspliced_diff = read_dataframes("spliced_unspliced_diff")
+    spliced_unspliced_corr = read_dataframes("spliced_unspliced_corr")
+
+    # Make figure
+    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH / 1.5), layout="constrained")
+    sub_figs = fig.subfigures(2, 3).ravel()
+
+    # Difference in spliced/unspliced/ambiguous counts per cell
+    for sub_fig, splice_state in zip(sub_figs[:3], SPLICE_STATES):
+        split_boxplot(
+            sub_fig,
+            spliced_unspliced_diff[
+                (spliced_unspliced_diff["genes"] == "all")
+                & (spliced_unspliced_diff["splice_state"] == splice_state)
+            ],
+            "diff",
+            y_label="difference",
+        )
+        sub_fig.suptitle(splice_state)
+        if splice_state != SPLICE_STATES[0]:
+            sub_fig.get_axes()[0].set_ylabel("")
+
+    # Pearson correlation between methods
+    for sub_fig, splice_state in zip(sub_figs[3:], SPLICE_STATES):
+        split_boxplot(
+            sub_fig,
+            spliced_unspliced_corr[
+                spliced_unspliced_corr["splice_state"] == splice_state
+            ],
+            "pearsonr",
+            y_label="Pearson corr.",
+            hue="comparison",
+            palette="Accent",
+        )
+        if splice_state != SPLICE_STATES[0]:
+            sub_fig.get_axes()[0].set_ylabel("")
+
+    handles_top, labels_top = sub_figs[0].get_axes()[0].get_legend_handles_labels()
+    handles_bottom, labels_bottom = (
+        sub_figs[3].get_axes()[0].get_legend_handles_labels()
+    )
+    fig.legend(
+        handles_top + handles_bottom,
+        [lab.replace("_", " vs.\n") for lab in labels_top + labels_bottom],
+        ncol=5,
+        loc="outside lower center",
+    )
+    for i, label in enumerate(string.ascii_uppercase[:6]):
+        sub_figs[i].text(
+            0.02, 0.98, label, transform=sub_figs[i].transSubfigure, **AXLAB_KWS
+        )
+    fig.savefig(os.path.join(FIG_DIR, "suppfig1.pdf"))
+    plt.close()
+
+
 def figure_4():
     # Load all DataFrames
     velocities_cosine = read_dataframes("velocities_cosine")
@@ -215,8 +270,7 @@ def figure_4():
     }
 
     # Make figure
-    fig_size = (FIG_WIDTH, FIG_WIDTH / 1.5)
-    fig = plt.figure(figsize=fig_size, layout="constrained")
+    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH / 1.5), layout="constrained")
     sub_figs = fig.subfigures(2, 1, height_ratios=[1.2, 1])
     axs_top = sub_figs[0].subplots(1, 3)
     for i, (method, adata) in enumerate(adatas.items()):
@@ -267,11 +321,92 @@ def figure_4():
     plt.close()
 
 
+def supplementary_figure_2():
+    # Make figure
+    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH), layout="constrained")
+    sub_figs = fig.subfigures(3, 1)
+
+    # Load and plot AnnData objects for retina dataset
+    adatas_retina = {
+        method: sc.read_h5ad(f"../out/retina/adata_{method}.h5ad")
+        for method in METHODS_ORDER[:3]
+    }
+    axs_top = sub_figs[0].subplots(1, 3)
+    for i, (method, adata) in enumerate(adatas_retina.items()):
+        scv.pl.velocity_embedding_grid(
+            adata,
+            basis="umap",
+            color="Annotation",
+            size=20,
+            alpha=0.5,
+            arrow_length=2,
+            arrow_size=(10, 18, 8),
+            density=0.8,
+            show=False,
+            ax=axs_top[i],
+            title=method,
+            legend_loc="right margin" if i == len(adatas_retina) - 1 else "none",
+        )
+
+    # Load and plot AnnData objects for Stewart dataset
+    adatas_stewart = {
+        method: sc.read_h5ad(f"../out/stewart/adata_{method}.h5ad")
+        for method in METHODS_ORDER[:3]
+    }
+    axs_mid = sub_figs[1].subplots(1, 3)
+    for i, (method, adata) in enumerate(adatas_stewart.items()):
+        scv.pl.velocity_embedding_grid(
+            adata,
+            basis="umap",
+            color="cell_type",
+            size=20,
+            alpha=0.5,
+            arrow_length=2,
+            arrow_size=(10, 18, 8),
+            density=0.8,
+            show=False,
+            ax=axs_mid[i],
+            title=method,
+            legend_loc="right margin" if i == len(adatas_stewart) - 1 else "none",
+        )
+
+    # Load and plot AnnData objects for Fu dataset
+    adatas_fu = {
+        method: sc.read_h5ad(f"../out/fu/adata_{method}.h5ad")
+        for method in METHODS_ORDER[:3]
+    }
+    axs_bottom = sub_figs[2].subplots(1, 3)
+    for i, (method, adata) in enumerate(adatas_fu.items()):
+        scv.pl.velocity_embedding_grid(
+            adata,
+            basis="umap",
+            color="groups",
+            size=20,
+            alpha=0.5,
+            arrow_length=2,
+            arrow_size=(10, 18, 8),
+            density=0.8,
+            show=False,
+            ax=axs_bottom[i],
+            title=method,
+            legend_loc="right margin" if i == len(adatas_fu) - 1 else "none",
+        )
+
+    for i, label in enumerate(string.ascii_uppercase[:3]):
+        sub_figs[i].text(
+            0.01, 0.98, label, transform=sub_figs[i].transSubfigure, **AXLAB_KWS
+        )
+    fig.savefig(os.path.join(FIG_DIR, "suppfig2.pdf"))
+    plt.close()
+
+
 def main():
     os.makedirs(FIG_DIR, exist_ok=True)
     figure_2()
     figure_3()
+    supplementary_figure_1()
     figure_4()
+    supplementary_figure_2()
 
 
 if __name__ == "__main__":
