@@ -1,0 +1,12 @@
+name: alevin
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - alevin-fry
+  - salmon=1.10.2
+  - pip
+  - bedtools
+  - pip:
+      - pyroe
