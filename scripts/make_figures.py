@@ -20,8 +20,8 @@ DATASETS_ORDER = ["pancreas", "retina", "stewart", "fu"]
 DATASETS_LABELS = {
     "pancreas": "Pancreas",
     "retina": "Retina",
-    "stewart": "Stewart",
-    "fu": "Fu",
+    "stewart": "B cells",
+    "fu": "T cells",
 }
 METHODS_ORDER = [
     "velocyto",
