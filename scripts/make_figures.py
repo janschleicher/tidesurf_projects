@@ -8,12 +8,14 @@ import scanpy as sc
 import scvelo as scv
 from typing import Optional
 
+
 # Set up plotting parameters
 sc.set_figure_params(vector_friendly=True, dpi_save=300, scanpy=False, fontsize=10)
 scv.set_figure_params(vector_friendly=True, dpi_save=300, fontsize=10)
 plt.style.use("matplotlibrc.txt")
 AXLAB_KWS = {"fontsize": 12, "fontweight": "bold", "va": "top", "ha": "left"}
 FIG_WIDTH = 17.8 / 2.54  # in inches
+FIG_WIDTH_SINGLE = 8.6 / 2.54  # in inches
 FIG_DIR = "../figures"
 
 DATASETS_ORDER = ["pancreas", "retina", "stewart", "fu"]
@@ -99,16 +101,20 @@ def figure_2():
     # Load all DataFrames
     total_counts = read_dataframes("total_counts")
     counts_diff = read_dataframes("counts_diff")
-    spliced_corr = read_dataframes("spliced_corr_cellranger")
+    counts_corr = read_dataframes("counts_corr_cellranger")
+    counts_cosine = read_dataframes("counts_cosine_cellranger")
 
     # Make figure
-    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH / 2.5), layout="constrained")
-    sub_figs = fig.subfigures(1, 3)
+    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH / 3), layout="constrained")
+    sub_figs = fig.subfigures(1, 4)
     split_boxplot(sub_figs[0], total_counts[total_counts["genes"] == "all"], "counts")
     split_boxplot(sub_figs[1], counts_diff[counts_diff["genes"] == "all"], "difference")
     for ax in sub_figs[1].get_axes():
         ax.axhline(0, color="grey", linestyle="--", zorder=0)
-    split_boxplot(sub_figs[2], spliced_corr, "pearsonr", y_label="Pearson corr.")
+    split_boxplot(sub_figs[2], counts_corr, "pearsonr", y_label="Pearson corr.")
+    split_boxplot(
+        sub_figs[3], counts_cosine, "cosine_similarity", y_label="cosine similarity"
+    )
     handles, labels = sub_figs[0].get_axes()[0].get_legend_handles_labels()
     fig.legend(
         handles,
@@ -116,7 +122,7 @@ def figure_2():
         ncol=4,
         loc="outside lower center",
     )
-    for i, label in enumerate(string.ascii_uppercase[:3]):
+    for i, label in enumerate(string.ascii_uppercase[:4]):
         sub_figs[i].text(
             0.02, 0.98, label, transform=sub_figs[i].transSubfigure, **AXLAB_KWS
         )
@@ -402,6 +408,41 @@ def supplementary_figure_2():
     plt.close()
 
 
+def figure_5():
+    # Load runtimes DataFrame
+    runtimes = pd.read_csv("../out/runtimes.csv", index_col=0)
+    runtimes["runtime"] = runtimes["runtime"].astype("timedelta64[s]")
+    runtimes["runtime_hours"] = runtimes["runtime"].dt.total_seconds() / 3600
+
+    # Make figure
+    fig, ax = plt.subplots(
+        1,
+        1,
+        figsize=(FIG_WIDTH_SINGLE / 1.5, FIG_WIDTH_SINGLE / 2),
+        layout="constrained",
+    )
+    sns.scatterplot(
+        runtimes,
+        x="n_reads",
+        y="runtime_hours",
+        hue="method",
+        hue_order=["velocyto", "tidesurf"],
+        palette=[
+            mpl.cm.get_cmap("Dark2").colors[0],
+            mpl.cm.get_cmap("Dark2").colors[2],
+        ],
+        s=15,
+        ax=ax,
+    )
+    ax.set_xlabel("number of reads [millions]")
+    ax.xaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda x, _: f"{x/1e6:.0f}"))
+    ax.set_ylabel("run time [hours]")
+    ax.yaxis.set_major_locator(mpl.ticker.MultipleLocator(5))
+    ax.legend(loc="upper left", markerscale=1.2)
+    fig.savefig(os.path.join(FIG_DIR, "fig5.pdf"))
+    plt.close()
+
+
 def main():
     os.makedirs(FIG_DIR, exist_ok=True)
     figure_2()
@@ -409,6 +450,7 @@ def main():
     supplementary_figure_1()
     figure_4()
     supplementary_figure_2()
+    figure_5()
 
 
 if __name__ == "__main__":
