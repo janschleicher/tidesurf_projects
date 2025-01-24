@@ -51,6 +51,7 @@ def main():
             f"--orientation {args.orientation} "
             f"--min_intron_overlap {args.min_intron_overlap} "
             f"{'--multi_mapped_reads ' if args.multi_mapped_reads else ''}"
+            f"--filter_cells --whitelist cellranger "
             f"{os.path.join(args.multi_sample_dir, sample_dir)} {args.gtf_file}"
         )
 

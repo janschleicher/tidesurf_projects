@@ -119,6 +119,8 @@ for i in {0..11}; do
   conda run -n tidesurf --no-capture-output tidesurf \
     -o "${DATA_DIR}/tidesurf/${ID}" \
     --orientation antisense \
+  --filter_cells \
+  --whitelist cellranger \
     "${DATA_DIR}/cellranger/${ID}" \
     ../data/reference_genomes/${REFERENCE}/genes/genes.gtf
 

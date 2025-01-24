@@ -71,6 +71,8 @@ cd ${WD} || exit
 conda run -n tidesurf --no-capture-output python3 run_tidesurf_multisample.py \
   -o ${DATA_DIR}/tidesurf \
   --orientation antisense \
+  --filter_cells \
+  --whitelist cellranger \
   ${DATA_DIR}/cellranger \
   ../data/reference_genomes/${REFERENCE}/genes/genes.gtf
 
