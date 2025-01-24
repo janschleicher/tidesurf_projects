@@ -261,14 +261,14 @@ def supplementary_figure_1():
 
 def figure_4():
     # Load all DataFrames
-    velocities_cosine = read_dataframes("velocities_cosine")
+    velocities_cosine = read_dataframes("velocities_velo_cosine")
     comp_mapping = {
         "velocyto_tidesurf": "tidesurf_velocyto",
         "alevin-fry_tidesurf": "tidesurf_alevin-fry",
         "velocyto_alevin-fry": "velocyto_alevin-fry",
     }
     velocities_cosine["comparison"] = velocities_cosine["comparison"].map(comp_mapping)
-    velocities_corr = read_dataframes("velocities_corr")
+    velocities_corr = read_dataframes("velocities_velo_corr")
     velocities_corr["comparison"] = velocities_corr["comparison"].map(comp_mapping)
 
     # Load AnnData objects
@@ -290,6 +290,7 @@ def figure_4():
             alpha=0.5,
             arrow_length=2,
             arrow_size=(10, 18, 8),
+            arrow_color="black",
             density=0.8,
             show=False,
             ax=axs_top[i],
@@ -349,6 +350,7 @@ def supplementary_figure_2():
             alpha=0.5,
             arrow_length=2,
             arrow_size=(10, 18, 8),
+            arrow_color="black",
             density=0.8,
             show=False,
             ax=axs_top[i],
@@ -371,6 +373,7 @@ def supplementary_figure_2():
             alpha=0.5,
             arrow_length=2,
             arrow_size=(10, 18, 8),
+            arrow_color="black",
             density=0.8,
             show=False,
             ax=axs_mid[i],
@@ -393,6 +396,7 @@ def supplementary_figure_2():
             alpha=0.5,
             arrow_length=2,
             arrow_size=(10, 18, 8),
+            arrow_color="black",
             density=0.8,
             show=False,
             ax=axs_bottom[i],
@@ -408,21 +412,65 @@ def supplementary_figure_2():
     plt.close()
 
 
-def figure_5():
-    # Load runtimes DataFrame
-    runtimes = pd.read_csv("../out/runtimes.csv", index_col=0)
-    runtimes["runtime"] = runtimes["runtime"].astype("timedelta64[s]")
-    runtimes["runtime_hours"] = runtimes["runtime"].dt.total_seconds() / 3600
+def supplementary_figure_3():
+    # Load all DataFrames
+    velocities_cosine = read_dataframes("velocities_cosine")
+    comp_mapping = {
+        "velocyto_tidesurf": "tidesurf_velocyto",
+        "alevin-fry_tidesurf": "tidesurf_alevin-fry",
+        "velocyto_alevin-fry": "velocyto_alevin-fry",
+    }
+    velocities_cosine["comparison"] = velocities_cosine["comparison"].map(comp_mapping)
+    velocities_corr = read_dataframes("velocities_corr")
+    velocities_corr["comparison"] = velocities_corr["comparison"].map(comp_mapping)
 
     # Make figure
-    fig, ax = plt.subplots(
-        1,
-        1,
-        figsize=(FIG_WIDTH_SINGLE / 1.5, FIG_WIDTH_SINGLE / 2),
-        layout="constrained",
+    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH_SINGLE / 1.5), layout="constrained")
+    sub_figs = fig.subfigures(1, 3)
+
+    split_boxplot(
+        sub_figs[0],
+        velocities_cosine,
+        "cosine_similarity",
+        y_label="cosine similarity",
+        hue="comparison",
+        palette="Accent",
     )
-    sns.scatterplot(
-        runtimes,
+    split_boxplot(
+        sub_figs[1],
+        velocities_corr,
+        "pearsonr",
+        y_label="Pearson corr.",
+        hue="comparison",
+        palette="Accent",
+    )
+    handles, labels = sub_figs[0].get_axes()[0].get_legend_handles_labels()
+    sub_figs[2].legend(
+        handles,
+        [lab.replace("_", " vs.\n") for lab in labels],
+        loc="center",
+    )
+    for i, label in enumerate(string.ascii_uppercase[:2]):
+        sub_figs[i].text(
+            0.02, 0.98, label, transform=sub_figs[i].transSubfigure, **AXLAB_KWS
+        )
+    fig.savefig(os.path.join(FIG_DIR, "suppfig3.pdf"))
+    plt.close()
+
+
+def supplementary_figure_4():
+    # Load runtimes DataFrame
+    run_metrics = pd.read_csv("../out/runtimes_cluster.csv", index_col=0)
+    run_metrics["runtime"] = run_metrics["runtime"].astype("timedelta64[s]")
+    run_metrics["runtime_hours"] = run_metrics["runtime"].dt.total_seconds() / 3600
+
+    # Make figure
+    fig = plt.figure(figsize=(FIG_WIDTH / 1.5, FIG_WIDTH / 3), layout="constrained")
+    sub_figs = fig.subfigures(1, 2)
+    axs = [sub_fig.subplots(1, 1) for sub_fig in sub_figs]
+
+    sns.lineplot(
+        run_metrics,
         x="n_reads",
         y="runtime_hours",
         hue="method",
@@ -431,15 +479,42 @@ def figure_5():
             mpl.cm.get_cmap("Dark2").colors[0],
             mpl.cm.get_cmap("Dark2").colors[2],
         ],
-        s=15,
-        ax=ax,
+        err_style="bars",
+        errorbar="sd",
+        ax=axs[0],
     )
-    ax.set_xlabel("number of reads [millions]")
-    ax.xaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda x, _: f"{x/1e6:.0f}"))
-    ax.set_ylabel("run time [hours]")
-    ax.yaxis.set_major_locator(mpl.ticker.MultipleLocator(5))
-    ax.legend(loc="upper left", markerscale=1.2)
-    fig.savefig(os.path.join(FIG_DIR, "fig5.pdf"))
+    axs[0].set_xlabel("number of reads [millions]")
+    axs[0].xaxis.set_major_formatter(
+        mpl.ticker.FuncFormatter(lambda x, _: f"{x / 1e6:.0f}")
+    )
+    axs[0].set_ylabel("run time [hours]")
+    axs[0].legend(loc="upper left", markerscale=1.2)
+
+    sns.lineplot(
+        run_metrics,
+        x="n_reads",
+        y="memory",
+        hue="method",
+        hue_order=["velocyto", "tidesurf"],
+        palette=[
+            mpl.cm.get_cmap("Dark2").colors[0],
+            mpl.cm.get_cmap("Dark2").colors[2],
+        ],
+        err_style="bars",
+        errorbar="sd",
+        ax=axs[1],
+    )
+
+    axs[1].get_legend().remove()
+    axs[1].set_xlabel("number of reads [millions]")
+    axs[1].xaxis.set_major_formatter(
+        mpl.ticker.FuncFormatter(lambda x, _: f"{x / 1e6:.0f}")
+    )
+    axs[1].set_ylabel("memory [GB]")
+    for sub_fig, lab in zip(sub_figs, string.ascii_uppercase[: len(sub_figs)]):
+        sub_fig.text(0.015, 0.98, lab, **AXLAB_KWS)
+
+    fig.savefig(os.path.join(FIG_DIR, "suppfig4.pdf"))
     plt.close()
 
 
@@ -450,7 +525,8 @@ def main():
     supplementary_figure_1()
     figure_4()
     supplementary_figure_2()
-    figure_5()
+    supplementary_figure_3()
+    supplementary_figure_4()
 
 
 if __name__ == "__main__":
