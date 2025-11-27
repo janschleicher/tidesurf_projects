@@ -1,8 +1,8 @@
 #!/bin/bash
 
 WD=$(pwd)
-NUM_CORES=50
-MAX_MEM_CR=700  # max memory for cellranger in GB
+NUM_CORES=12
+MAX_MEM_CR=120  # max memory for cellranger in GB
 DATA_DIR="../data/stewart"
 FASTQ_DIR="${DATA_DIR}/fastq"
 SAMPLES=("Naive" "Transitional" "IgM-Memory" "Classical-Memory" "DN")
@@ -82,4 +82,38 @@ for SAMPLE in "${SAMPLES[@]}"; do
       -@ ${NUM_CORES} \
       ${DATA_DIR}/cellranger/${SAMPLE} \
       ../data/reference_genomes/${REFERENCE}/genes/genes.gtf ; } 2> ${DATA_DIR}/cellranger/${SAMPLE}_time.txt
+done
+
+# Run STARsolo
+mkdir ${DATA_DIR}/starsolo
+cd ${DATA_DIR}/starsolo || exit
+
+for i in {1..5}; do
+    SAMPLE=${SAMPLES[$i-1]}
+    OUT_DIR="${SAMPLE}/"
+    mkdir $OUT_DIR
+    cd $OUT_DIR || exit
+
+    { time 
+    STAR --runThreadN ${NUM_CORES} \
+      --genomeDir ../../../reference_genomes/GRCh38_STAR \
+      --readFilesIn ../../fastq/${SAMPLE}_S${i}_L00${i}_R1_001.fastq.gz ../../fastq/${SAMPLE}_S${i}_L00${i}_R2_001.fastq.gz \
+      --soloType CB_UMI_Simple \
+      --soloCBwhitelist ~/cellranger-7.1.0/lib/python/cellranger/barcodes/737K-august-2016.txt \
+      --outFilterScoreMin 30 \
+      --soloCBmatchWLtype 1MM_multi_Nbase_pseudocounts \
+      --soloUMIfiltering MultiGeneUMI_CR \
+      --soloUMIdedup 1MM_CR \
+      --soloCellFilter EmptyDrops_CR \
+      --soloBarcodeMate 1 \
+      --clip5pNbases 39 0 \
+      --soloCBstart 1 \
+      --soloCBlen 16 \
+      --soloUMIstart 17 \
+      --soloUMIlen 10 \
+      --outSAMattributes NH HI nM AS CR UR CB UB GX GN sS sQ sM \
+      --outSAMtype BAM SortedByCoordinate \
+      --soloFeatures Gene Velocyto \
+      --readFilesCommand zcat ; } 2> time.txt
+    cd ..
 done

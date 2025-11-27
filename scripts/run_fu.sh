@@ -1,8 +1,8 @@
 #!/bin/bash
 
 WD=$(pwd)
-NUM_CORES=50
-MAX_MEM_CR=700  # max memory for cellranger in GB
+NUM_CORES=10
+MAX_MEM_CR=120  # max memory for cellranger in GB
 DATA_DIR="../data/fu"
 FASTQ_DIR="${DATA_DIR}/fastq"
 
@@ -39,6 +39,7 @@ READ_LENGTHS=(91 91 91 91 91 101 101 101 101 101 101 101)
 
 mkdir -p ${FASTQ_DIR}
 mkdir -p ${DATA_DIR}/cellranger
+mkdir -p ${DATA_DIR}/starsolo
 
 # Create splici references
 REFERENCE="refdata-gex-GRCh38-2020-A"
@@ -76,16 +77,17 @@ for i in {0..11}; do
 	cellranger bamtofastq --nthreads=${NUM_CORES} --reads-per-fastq=9999999999999999999 "${ID}_GEX.bam" "${ID}"
 	rm "${ID}_GEX.bam"
 
-	# Run alevin-fry
 	cd "${WD}" || exit
 	mv ${FASTQ_DIR}/${ID}/*/*.fastq.gz ${FASTQ_DIR}/${ID}
+
+	# Run alevin-fry
 	FASTQ_FILES=( ${FASTQ_DIR}/${ID}/*_R1_001.fastq.gz )
 	echo "${FASTQ_FILES[@]}"
 	FASTQ_PREFIX=()
 	for f in "${FASTQ_FILES[@]}"; do
     FASTQ_PREFIX+=( "${f::-16}" )
   done
-	FASTQ_PREFIX=${FASTQ_FILES[0]::-16}
+	# FASTQ_PREFIX=${FASTQ_FILES[0]::-16}
 	echo "${FASTQ_PREFIX[@]}"
 
 	SPLICI_REF="${SPLICI_REF_PREFIX}${READ_LENGTH}_ftl5"
@@ -111,10 +113,6 @@ for i in {0..11}; do
 	    --localcores=${NUM_CORES} \
 	    --localmem=${MAX_MEM_CR}
 
-	# Remove fastqs
-	cd "${WD}" || exit
-	rm -r "${FASTQ_DIR:?}/${ID:?}"
-
 	# Run tidesurf
   conda run -n tidesurf --no-capture-output tidesurf \
     -o "${DATA_DIR}/tidesurf/${ID}" \
@@ -132,4 +130,75 @@ for i in {0..11}; do
 
   # Remove velocyto sorted BAM file
   rm "${DATA_DIR}/cellranger/${ID}/outs/cellsorted_possorted_genome_bam.bam"
+
+  # Run STARsolo
+  cd $WD || exit
+  cd ${DATA_DIR}/starsolo || exit
+  OUT_DIR="${ID}/"
+  mkdir $OUT_DIR
+  cd $OUT_DIR || exit
+
+  R1_FILES=( ../../fastq/${ID}/*_R1_001.fastq.gz )
+  printf -v R1_STRING '%s,' "${R1_FILES[@]}"
+  R1_STRING="${R1_STRING%,}"
+  R2_FILES=( ../../fastq/${ID}/*_R2_001.fastq.gz )
+  printf -v R2_STRING '%s,' "${R2_FILES[@]}"
+  R2_STRING="${R2_STRING%,}"
+
+  if [ $READ_LENGTH -eq 91 ]; then
+    { time 
+      STAR --runThreadN ${NUM_CORES} \
+        --genomeDir ../../../reference_genomes/GRCh38_STAR \
+        --readFilesIn $R1_STRING $R2_STRING \
+        --soloType CB_UMI_Simple \
+        --soloCBwhitelist ~/cellranger-7.1.0/lib/python/cellranger/barcodes/737K-august-2016.txt \
+        --outFilterScoreMin 30 \
+        --soloCBmatchWLtype 1MM_multi_Nbase_pseudocounts \
+        --soloUMIfiltering MultiGeneUMI_CR \
+        --soloUMIdedup 1MM_CR \
+        --soloCellFilter EmptyDrops_CR \
+        --soloBarcodeMate 1 \
+        --clip5pNbases 39 0 \
+        --soloCBstart 1 \
+        --soloCBlen 16 \
+        --soloUMIstart 17 \
+        --soloUMIlen 10 \
+        --outSAMtype None \
+        --soloFeatures Gene Velocyto \
+        --readFilesCommand zcat ; } 2> time.txt
+
+        # To create sorted BAM files, add the following two arguments:
+        # --outSAMattributes NH HI nM AS CR UR CB UB GX GN sS sQ sM \
+        # --outSAMtype BAM SortedByCoordinate \
+        # Omitted because it crashes due to insufficient RAM (when using FASTQ files from bamtofastq)
+        # For unsorted BAM output:
+        # --outSAMtype BAM Unsorted \
+  else
+    # Paired-end alignment fails with Segmentation fault for samples with read length 101
+    # -> single-end alignment
+    { time 
+      STAR --runThreadN ${NUM_CORES} \
+        --genomeDir ../../../reference_genomes/GRCh38_STAR \
+        --readFilesIn $R2_STRING $R1_STRING \
+        --soloType CB_UMI_Simple \
+        --soloCBwhitelist ~/cellranger-7.1.0/lib/python/cellranger/barcodes/737K-august-2016.txt \
+        --outFilterScoreMin 30 \
+        --soloCBmatchWLtype 1MM_multi_Nbase_pseudocounts \
+        --soloUMIfiltering MultiGeneUMI_CR \
+        --soloUMIdedup 1MM_CR \
+        --soloCellFilter EmptyDrops_CR \
+        --soloStrand Reverse \
+        --soloBarcodeReadLength 0 \
+        --soloCBstart 1 \
+        --soloCBlen 16 \
+        --soloUMIstart 17 \
+        --soloUMIlen 10 \
+        --outSAMtype None \
+        --soloFeatures Gene Velocyto \
+        --readFilesCommand zcat ; } 2> time.txt
+  fi
+
+	# Remove fastqs
+  cd "${WD}" || exit
+	rm -r "${FASTQ_DIR:?}/${ID:?}"
 done
