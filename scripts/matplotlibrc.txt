@@ -110,7 +110,7 @@ figure.titlesize:   12.0     # size of the figure title (``Figure.suptitle()``)
 ## The default savefig parameters can be different from the display parameters
 ## e.g., you may want a higher resolution, or to make the figure
 ## background white
-savefig.dpi:       300      # figure dots per inch or 'figure'
+savefig.dpi:       600      # figure dots per inch or 'figure'
 savefig.format:    pdf         # {png, ps, pdf, svg}
 #savefig.bbox:      standard    # {tight, standard}
                                 # 'tight' is incompatible with generating frames

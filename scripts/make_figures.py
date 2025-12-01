@@ -37,6 +37,16 @@ PALETTE = [
     "#AA4499",
     "#DDDDDD",
 ]
+# Paul Tol's vibrant palette (https://sronpersonalpages.nl/~pault/)
+PALETTE_COMP = [
+    "#EE7733",
+    "#0077BB",
+    "#33BBEE",
+    "#EE3377",
+    "#CC3311",
+    "#009988",
+    "#BBBBBB",
+]
 
 DATASETS_ORDER = ["pancreas", "retina", "stewart", "fu"]
 DATASETS_LABELS = {
@@ -53,9 +63,12 @@ METHODS_ORDER = [
     "starsolo",
     "tidesurf",
     "cellranger",
-    "tidesurf_velocyto",
+    "alevin-fry_starsolo",
     "tidesurf_alevin-fry",
+    "tidesurf_starsolo",
+    "tidesurf_velocyto",
     "velocyto_alevin-fry",
+    "velocyto_starsolo",
 ]
 METHODS_DICT = {
     "velocyto": "velocyto",
@@ -266,7 +279,7 @@ def figure_1():
         handles,
         [METHODS_DICT[lab] for lab in labels],
         loc="outside lower center",
-        ncol=2,
+        ncols=2,
         frameon=False,
     )
 
@@ -529,51 +542,65 @@ def figure_1():
     plt.close()
 
 
-def figure_2():
+def figure_3():
     # Load all DataFrames
     total_counts = read_dataframes("total_counts")
     counts_diff = read_dataframes("counts_diff")
     counts_corr = read_dataframes("counts_corr_cellranger")
-    counts_cosine = read_dataframes("counts_cosine_cellranger")
 
     # Make figure
     fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH / 3), layout="constrained")
-    sub_figs = fig.subfigures(1, 4)
-    split_boxplot(sub_figs[0], total_counts[total_counts["genes"] == "all"], "counts")
-    split_boxplot(sub_figs[1], counts_diff[counts_diff["genes"] == "all"], "difference")
+    sub_figs = fig.subfigures(1, 3)
+    split_boxplot(
+        sub_figs[0],
+        total_counts[total_counts["genes"] == "all"],
+        "counts",
+        palette=PALETTE,
+    )
+    split_boxplot(
+        sub_figs[1],
+        counts_diff[counts_diff["genes"] == "all"],
+        "difference",
+        palette=PALETTE,
+    )
     for ax in sub_figs[1].get_axes():
         ax.axhline(0, color="grey", linestyle="--", zorder=0)
-    split_boxplot(sub_figs[2], counts_corr, "pearsonr", y_label="Pearson corr.")
     split_boxplot(
-        sub_figs[3], counts_cosine, "cosine_similarity", y_label="cosine similarity"
+        sub_figs[2],
+        counts_corr[~counts_corr["alignment_type"].isin(["PE", "SE"])],
+        "pearsonr",
+        y_label="Pearson corr.",
+        palette=PALETTE,
     )
+
     handles, labels = sub_figs[0].get_axes()[0].get_legend_handles_labels()
     fig.legend(
         handles,
         labels,
-        ncol=4,
+        ncols=5,
         loc="outside lower center",
     )
-    for i, label in enumerate(string.ascii_uppercase[:4]):
+    for i, label in enumerate(string.ascii_uppercase[: len(sub_figs)]):
         sub_figs[i].text(
             0.02, 0.98, label, transform=sub_figs[i].transSubfigure, **AXLAB_KWS
         )
-    fig.savefig(os.path.join(FIG_DIR, "fig2.pdf"))
+    fig.savefig(os.path.join(FIG_DIR, "fig3"))
     plt.close()
 
 
-def figure_3():
+def figure_4():
     # Load all DataFrames
     spliced_unspliced_counts = read_dataframes("spliced_unspliced_counts")
     spliced_unspliced_ratios = read_dataframes("spliced_unspliced_ratios")
     spliced_unspliced_cosine = read_dataframes("spliced_unspliced_cosine")
 
     # Make figure
-    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH), layout="constrained")
-    sub_figs = fig.subfigures(3, 3).ravel()
+    fig = plt.figure(figsize=(FIG_WIDTH, FIG_HEIGHT_MAX), layout="constrained")
+    sub_figs = fig.subfigures(3, 1)
 
     # Total spliced/unspliced/ambiguous counts per cell
-    for sub_fig, splice_state in zip(sub_figs[:3], SPLICE_STATES):
+    sub_figs_top = sub_figs[0].subfigures(1, 3)
+    for sub_fig, splice_state in zip(sub_figs_top, SPLICE_STATES):
         split_boxplot(
             sub_fig,
             spliced_unspliced_counts[
@@ -581,13 +608,23 @@ def figure_3():
                 & (spliced_unspliced_counts["splice_state"] == splice_state)
             ],
             "counts",
+            palette=PALETTE,
         )
-        sub_fig.suptitle(splice_state)
+        sub_fig.suptitle(splice_state, size=10)
         if splice_state != SPLICE_STATES[0]:
             sub_fig.get_axes()[0].set_ylabel("")
+    handles, labels = sub_figs_top[0].get_axes()[0].get_legend_handles_labels()
+    sub_figs[0].legend(
+        handles,
+        [METHODS_DICT[lab] for lab in labels],
+        handlelength=1.5,
+        ncols=4,
+        loc="outside lower center",
+    )
 
     # Total spliced/unspliced/ambiguous counts ratios per cell
-    for sub_fig, splice_state in zip(sub_figs[3:6], SPLICE_STATES):
+    sub_figs_center = sub_figs[1].subfigures(1, 3)
+    for sub_fig, splice_state in zip(sub_figs_center, SPLICE_STATES):
         split_boxplot(
             sub_fig,
             spliced_unspliced_ratios[
@@ -595,12 +632,23 @@ def figure_3():
                 & (spliced_unspliced_ratios["splice_state"] == splice_state)
             ],
             "ratio",
+            palette=PALETTE,
         )
+        sub_fig.suptitle(splice_state, size=10)
         if splice_state != SPLICE_STATES[0]:
             sub_fig.get_axes()[0].set_ylabel("")
+    handles, labels = sub_figs_center[0].get_axes()[0].get_legend_handles_labels()
+    sub_figs[1].legend(
+        handles,
+        [METHODS_DICT[lab] for lab in labels],
+        handlelength=1.5,
+        ncols=4,
+        loc="outside lower center",
+    )
 
     # Cosine similarity between methods
-    for sub_fig, splice_state in zip(sub_figs[6:], SPLICE_STATES):
+    sub_figs_bottom = sub_figs[2].subfigures(1, 3)
+    for sub_fig, splice_state in zip(sub_figs_bottom, SPLICE_STATES):
         split_boxplot(
             sub_fig,
             spliced_unspliced_cosine[
@@ -609,26 +657,35 @@ def figure_3():
             "cosine_similarity",
             y_label="cosine similarity",
             hue="comparison",
-            palette="Accent",
+            palette=PALETTE_COMP,
         )
+        sub_fig.suptitle(splice_state, size=10)
         if splice_state != SPLICE_STATES[0]:
             sub_fig.get_axes()[0].set_ylabel("")
-
-    handles_top, labels_top = sub_figs[0].get_axes()[0].get_legend_handles_labels()
-    handles_bottom, labels_bottom = (
-        sub_figs[6].get_axes()[0].get_legend_handles_labels()
-    )
-    fig.legend(
-        handles_top + handles_bottom,
-        [lab.replace("_", " vs.\n") for lab in labels_top + labels_bottom],
-        ncol=6,
+    handles, labels = sub_figs_bottom[0].get_axes()[0].get_legend_handles_labels()
+    sub_figs[2].legend(
+        handles,
+        [
+            " vs.\n".join(
+                [METHODS_DICT[lab.split("_")[0]], METHODS_DICT[lab.split("_")[1]]]
+            )
+            for lab in labels
+        ],
+        handlelength=1.5,
+        ncols=6,
         loc="outside lower center",
     )
-    for i, label in enumerate(string.ascii_uppercase[:9]):
-        sub_figs[i].text(
-            0.02, 0.99, label, transform=sub_figs[i].transSubfigure, **AXLAB_KWS
+    for i, sub_fig in enumerate(
+        sub_figs_top.tolist() + sub_figs_center.tolist() + sub_figs_bottom.tolist()
+    ):
+        sub_fig.text(
+            0.02,
+            0.98,
+            string.ascii_uppercase[i],
+            transform=sub_fig.transSubfigure,
+            **AXLAB_KWS,
         )
-    fig.savefig(os.path.join(FIG_DIR, "fig3.pdf"))
+    fig.savefig(os.path.join(FIG_DIR, "fig4"))
     plt.close()
 
 
@@ -680,7 +737,7 @@ def supplementary_figure_1():
     fig.legend(
         handles_top + handles_bottom,
         [lab.replace("_", " vs.\n") for lab in labels_top + labels_bottom],
-        ncol=5,
+        ncols=5,
         loc="outside lower center",
     )
     for i, label in enumerate(string.ascii_uppercase[:6]):
@@ -691,7 +748,7 @@ def supplementary_figure_1():
     plt.close()
 
 
-def figure_4():
+def figure_5():
     # Load all DataFrames
     velocities_cosine = read_dataframes("velocities_velo_cosine")
     comp_mapping = {
@@ -729,7 +786,7 @@ def figure_4():
             title=method,
         )
     handles, labels = axs_top[0].get_legend_handles_labels()
-    sub_figs[0].legend(handles, labels, ncol=4, loc="outside lower center")
+    sub_figs[0].legend(handles, labels, ncols=4, loc="outside lower center")
     sub_figs_bottom = sub_figs[1].subfigures(1, 3)
     split_boxplot(
         sub_figs_bottom[0],
@@ -758,7 +815,7 @@ def figure_4():
         string.ascii_uppercase[:3],
     ):
         sub_fig.text(0.01, 0.99, label, transform=sub_fig.transSubfigure, **AXLAB_KWS)
-    fig.savefig(os.path.join(FIG_DIR, "fig4.pdf"))
+    fig.savefig(os.path.join(FIG_DIR, "fig5"))
     plt.close()
 
 
@@ -953,7 +1010,6 @@ def supplementary_figure_4():
 def main():
     os.makedirs(FIG_DIR, exist_ok=True)
     figure_1()
-    figure_2()
     figure_3()
     supplementary_figure_1()
     figure_4()
