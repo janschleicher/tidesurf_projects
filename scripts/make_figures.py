@@ -1,6 +1,8 @@
 import os
 import string
-from typing import Iterable, Optional
+import sys
+from collections.abc import Iterable, Sequence
+from typing import Dict, Optional, Union
 
 import matplotlib as mpl
 import numpy as np
@@ -9,6 +11,10 @@ import scanpy as sc
 import scvelo as scv
 import seaborn as sns
 from matplotlib import pyplot as plt
+from scipy import stats
+
+sys.path.append("../notebooks")
+from utils import cosine
 
 # Set up plotting parameters
 sc.set_figure_params(vector_friendly=True, dpi_save=400, scanpy=False, fontsize=10)
@@ -139,6 +145,119 @@ def split_boxplot(
     axs[-1].tick_params(axis="y", which="both", left=False)
     if y_label is not None:
         axs[0].set_ylabel(y_label)
+
+
+def visualize_gene_overlap(
+    ax: mpl.axes.Axes,
+    transcripts: Dict[str, Dict[str, Union[int, Sequence]]],
+    colors: Sequence,
+):
+    def plot_gene(
+        y_pos: Union[float, int],
+        positions: Dict[str, Union[int, Sequence]],
+        colors: Sequence,
+    ):
+        x_quiver = np.linspace(
+            positions["start"], positions["end"], positions["n_arrows"] + 1
+        )
+        if positions["strand"] == "-":
+            x_quiver = x_quiver[::-1]
+        y_quiver = np.ones_like(x_quiver) * y_pos
+        ax.quiver(
+            x_quiver[:-1],
+            y_quiver[:-1],
+            x_quiver[1:] - x_quiver[:-1],
+            y_quiver[1:] - y_quiver[:-1],
+            scale_units="xy",
+            scale=0.8,
+            headaxislength=3,
+            headlength=3,
+            color="grey",
+        )
+        ax.plot(
+            np.asarray(positions["exons"]).T,
+            [y_pos, y_pos],
+            lw=10,
+            c=colors[1],
+        )
+        if "cds" in positions:
+            ax.plot(
+                np.asarray(positions["cds"]).T,
+                [y_pos, y_pos],
+                lw=10,
+                c=colors[0],
+            )
+
+    y_pos = 0.2
+    for i, (gene, positions) in enumerate(transcripts.items()):
+        plot_gene(
+            y_pos if positions["strand"] == "+" else -y_pos,
+            positions,
+            colors[2 * i : 2 * i + 2],
+        )
+        text_pos = y_pos + 0.2
+        ax.text(
+            (positions["start"] + positions["end"]) / 2,
+            text_pos if positions["strand"] == "+" else -text_pos,
+            gene,
+            va="bottom" if positions["strand"] == "+" else "top",
+            ha="center",
+            size=8,
+        )
+
+    # Draw forward and reverse strand
+    xlim = np.asarray(ax.get_xlim())
+    arrow_len = xlim[1] - xlim[0]
+    ax.quiver(
+        xlim,
+        np.asarray([0.8, -0.8]),
+        np.asarray([arrow_len, -arrow_len]),
+        np.zeros(2),
+        angles="xy",
+        scale_units="xy",
+        scale=1,
+        headwidth=4,
+        headlength=4,
+        headaxislength=4,
+        color="k",
+    )
+    ax.text(
+        (xlim[0] + xlim[1]) / 2, 0.9, "forward strand", va="bottom", ha="center", size=8
+    )
+    ax.text(
+        (xlim[0] + xlim[1]) / 2, -0.9, "reverse strand", va="top", ha="center", size=8
+    )
+    ax.legend(
+        [
+            (
+                mpl.patches.Rectangle(
+                    (0, 0),
+                    2,
+                    1,
+                    facecolor=colors[i],
+                    edgecolor=None,
+                ),
+                mpl.patches.Rectangle(
+                    (0, 0),
+                    2,
+                    1,
+                    facecolor=colors[i + 2],
+                    edgecolor=None,
+                ),
+            )
+            for i in [0, 1]
+        ],
+        ["CDS", "UTR"],
+        handler_map={tuple: mpl.legend_handler.HandlerTuple(ndivide=None, pad=0.3)},
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.1),
+        frameon=False,
+        ncols=2,
+        handlelength=2,
+        handleheight=1.0,
+        handletextpad=0.6,
+    )
+    ax.axis("off")
 
 
 def figure_1():
@@ -287,171 +406,53 @@ def figure_1():
     axs_center = sub_figs[1].subplots(1, 2)
 
     # Positions of overlapping transcripts RPL35 (+) and IQCG (-)
-    transcript_rpl35a = [197_950_190, 197_956_610]
-    exons_rpl35a = [
-        [197_950_190, 197_950_221],
-        [197_950_936, 197_950_936],
-        [197_951_159, 197_951_311],
-        [197_954_003, 197_954_147],
-        [197_955_750, 197_956_610],
-    ]
-    cds_rpl35a = [
-        [197_950_968, 197_950_978],
-        [197_951_159, 197_951_311],
-        [197_954_003, 197_954_147],
-        [197_955_750, 197_955_770],
-    ]
+    transcripts = {
+        "RPL35A": {
+            "strand": "+",
+            "start": 197_950_190,
+            "end": 197_956_610,
+            "exons": [
+                [197_950_190, 197_950_221],
+                [197_950_936, 197_950_936],
+                [197_951_159, 197_951_311],
+                [197_954_003, 197_954_147],
+                [197_955_750, 197_956_610],
+            ],
+            "cds": [
+                [197_950_968, 197_950_978],
+                [197_951_159, 197_951_311],
+                [197_954_003, 197_954_147],
+                [197_955_750, 197_955_770],
+            ],
+            "n_arrows": 10,
+        },
+        "IQCG": {
+            "strand": "-",
+            "start": 197_943_778,
+            "end": 197_959_991,
+            "exons": [
+                [197_959_845, 197_959_991],
+                [197_959_529, 197_959_719],
+                [197_945_620, 197_945_686],
+                [197_943_778, 197_944_051],
+            ],
+            "cds": [
+                [197_945_620, 197_945_627],
+                [197_943_778, 197_944_051],
+            ],
+            "n_arrows": 20,
+        },
+    }
 
-    transcript_iqcg = [197_943_778, 197_959_991]  # real start: 197_889_077
-    exons_iqcg = [
-        [197_959_845, 197_959_991],
-        [197_959_529, 197_959_719],
-        [197_945_620, 197_945_686],
-        [197_943_778, 197_944_051],
-        # [197_938_548, 197_938_780],
-        # [197_932_174, 197_932_302],
-        # [197_926_024, 197_926_105],
-        # [197_913_881, 197_914_042],
-        # [197_912_675, 197_912_749],
-        # [197_892_628, 197_892_759],
-        # [197_891_446, 197_891_547],
-        # [197_889_077, 197_889_714],
-    ]
-    cds_iqcg = [
-        [197_945_620, 197_945_627],
-        [197_943_778, 197_944_051],
-        # [197_938_548, 197_938_780],
-        # [197_932_174, 197_932_302],
-        # [197_926_024, 197_926_105],
-        # [197_913_881, 197_914_042],
-        # [197_912_675, 197_912_749],
-        # [197_892_628, 197_892_759],
-        # [197_891_446, 197_891_547],
-        # [197_889_583, 197_889_714],
-    ]
-
-    y_pos = 0.2
-    x_quiver = np.linspace(transcript_rpl35a[0], transcript_rpl35a[1], 10)
-    y_quiver = np.ones_like(x_quiver) * y_pos
-    axs_center[0].quiver(
-        x_quiver[:-1],
-        y_quiver[:-1],
-        x_quiver[1:] - x_quiver[:-1],
-        y_quiver[1:] - y_quiver[:-1],
-        headaxislength=3,
-        headlength=3,
-        color="grey",
-    )
     axs_center[0].plot(
-        np.asarray(exons_rpl35a).T,
-        [y_pos, y_pos],
-        lw=10,
-        c=mpl.colormaps["tab20"].colors[1],
-    )
-    axs_center[0].plot(
-        np.asarray(cds_rpl35a).T,
-        [y_pos, y_pos],
-        lw=10,
-        c=mpl.colormaps["tab20"].colors[0],
-    )
-    axs_center[0].text(
-        (transcript_rpl35a[0] + transcript_rpl35a[1]) / 2,
-        y_pos + 0.2,
-        "RPL35A",
-        va="bottom",
-        ha="center",
-        size=8,
-    )
-    x_quiver = np.linspace(transcript_iqcg[1], transcript_iqcg[0], 20)
-    y_quiver = np.ones_like(x_quiver) * (-y_pos)
-    axs_center[0].quiver(
-        x_quiver[:-1],
-        y_quiver[:-1],
-        x_quiver[1:] - x_quiver[:-1],
-        y_quiver[1:] - y_quiver[:-1],
-        headaxislength=3,
-        headlength=3,
-        color="grey",
-    )
-    axs_center[0].plot(
-        [transcript_iqcg[0] - 1_000, transcript_iqcg[0]],
-        [-y_pos, -y_pos],
+        [transcripts["IQCG"]["start"] - 2_000, transcripts["IQCG"]["start"]],
+        [-0.2, -0.2],
         c="grey",
         ls=":",
     )
-    axs_center[0].plot(
-        np.asarray(exons_iqcg).T,
-        [-y_pos, -y_pos],
-        lw=10,
-        c=mpl.colormaps["tab20"].colors[3],
+    visualize_gene_overlap(
+        axs_center[0], transcripts, colors=mpl.colormaps["tab20"].colors[:4]
     )
-    axs_center[0].plot(
-        np.asarray(cds_iqcg).T,
-        [-y_pos, -y_pos],
-        lw=10,
-        c=mpl.colormaps["tab20"].colors[2],
-    )
-    axs_center[0].text(
-        (transcript_iqcg[0] + transcript_iqcg[1]) / 2,
-        -y_pos - 0.2,
-        "IQCG",
-        va="top",
-        ha="center",
-        size=8,
-    )
-    # Draw forward and reverse strand
-    xlim = np.asarray(axs_center[0].get_xlim())
-    arrow_len = xlim[1] - xlim[0]
-    axs_center[0].quiver(
-        xlim,
-        np.asarray([0.8, -0.8]),
-        np.asarray([arrow_len, -arrow_len]),
-        np.zeros(2),
-        angles="xy",
-        scale_units="xy",
-        scale=1,
-        headwidth=4,
-        headlength=4,
-        headaxislength=4,
-        color="k",
-    )
-    axs_center[0].text(
-        (xlim[0] + xlim[1]) / 2, 0.9, "forward strand", va="bottom", ha="center", size=8
-    )
-    axs_center[0].text(
-        (xlim[0] + xlim[1]) / 2, -0.9, "reverse strand", va="top", ha="center", size=8
-    )
-    axs_center[0].legend(
-        [
-            (
-                mpl.patches.Rectangle(
-                    (0, 0),
-                    2,
-                    1,
-                    facecolor=mpl.colormaps["tab20"].colors[i],
-                    edgecolor=None,
-                ),
-                mpl.patches.Rectangle(
-                    (0, 0),
-                    2,
-                    1,
-                    facecolor=mpl.colormaps["tab20"].colors[i + 2],
-                    edgecolor=None,
-                ),
-            )
-            for i in [0, 1]
-        ],
-        ["CDS", "UTR"],
-        handler_map={tuple: mpl.legend_handler.HandlerTuple(ndivide=None, pad=0.3)},
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.1),
-        frameon=False,
-        ncols=2,
-        handlelength=2,
-        handleheight=1.0,
-        handletextpad=0.6,
-    )
-    axs_center[0].axis("off")
 
     overlapping_genes.loc[overlapping_genes.dataset == "fu", "dataset"] = (
         overlapping_genes.loc[overlapping_genes.dataset == "fu", "dataset"].astype(str)
@@ -543,143 +544,250 @@ def figure_1():
 
 
 def supplementary_figure_1():
-    # Load all DataFrames
-    spliced_unspliced_diff = read_dataframes("spliced_unspliced_diff")
-    spliced_unspliced_corr = read_dataframes("spliced_unspliced_corr")
+    # Load data
+    overlapping_genes = read_dataframes("gene_overlaps", datasets=["fu"])
+    adata_fu = sc.read_h5ad("../data/fu/adata/adata_raw_velocyto.h5ad")
+    adata_stewart = sc.read_h5ad("../data/stewart/adata/adata_raw_velocyto.h5ad")
 
-    # Make figure
-    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH / 1.5), layout="constrained")
-    sub_figs = fig.subfigures(2, 3).ravel()
+    # Subset to genes with mean expression >= 1
+    overlapping_genes = overlapping_genes[
+        np.asarray(adata_fu[:, overlapping_genes.Gene_x].X.mean(axis=0) >= 1).ravel()
+        & (overlapping_genes.alignment_type != "both")
+    ]
 
-    # Difference in spliced/unspliced/ambiguous counts per cell
-    for sub_fig, splice_state in zip(sub_figs[:3], SPLICE_STATES):
-        split_boxplot(
-            sub_fig,
-            spliced_unspliced_diff[
-                (spliced_unspliced_diff["genes"] == "all")
-                & (spliced_unspliced_diff["splice_state"] == splice_state)
-            ],
-            "diff",
-            y_label="difference",
-        )
-        sub_fig.suptitle(splice_state)
-        if splice_state != SPLICE_STATES[0]:
-            sub_fig.get_axes()[0].set_ylabel("")
-        for ax in sub_fig.get_axes():
-            ax.axhline(0, color="grey", linestyle="--", zorder=0)
+    overlapping_genes = overlapping_genes.pivot(
+        index=[
+            col
+            for col in overlapping_genes.columns
+            if col not in ["alignment_type", "pearsonr"]
+        ],
+        columns="alignment_type",
+        values="pearsonr",
+    ).reset_index()
 
-    # Pearson correlation between methods
-    for sub_fig, splice_state in zip(sub_figs[3:], SPLICE_STATES):
-        split_boxplot(
-            sub_fig,
-            spliced_unspliced_corr[
-                spliced_unspliced_corr["splice_state"] == splice_state
-            ],
-            "pearsonr",
-            y_label="Pearson corr.",
-            hue="comparison",
-            palette="Accent",
-        )
-        if splice_state != SPLICE_STATES[0]:
-            sub_fig.get_axes()[0].set_ylabel("")
-
-    handles_top, labels_top = sub_figs[0].get_axes()[0].get_legend_handles_labels()
-    handles_bottom, labels_bottom = (
-        sub_figs[3].get_axes()[0].get_legend_handles_labels()
+    overlapping_genes_scatter = (
+        overlapping_genes[overlapping_genes.dataset == "fu"]
+        .sort_values(by=["overlap_relative_gene_x", "overlap_bases"], ascending=False)
+        .reset_index(drop=True)
     )
-    fig.legend(
-        handles_top + handles_bottom,
-        [lab.replace("_", " vs.\n") for lab in labels_top + labels_bottom],
-        ncols=5,
-        loc="outside lower center",
-    )
-    for i, label in enumerate(string.ascii_uppercase[:6]):
-        sub_figs[i].text(
-            0.02, 0.98, label, transform=sub_figs[i].transSubfigure, **AXLAB_KWS
+
+    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH / 6 * 5), layout="constrained")
+    sub_figs = fig.subfigures(2, 1, height_ratios=[2, 1])
+
+    axs_top = sub_figs[0].subplots(2, 4)
+    for i, row in overlapping_genes_scatter.head(8).iterrows():
+        gene_x = row["Gene_x"]
+        gene_y = row["Gene_y"]
+        rho_se = row["SE"]
+        rho_pe = row["PE"]
+        ax = axs_top.flat[i]
+        sns.scatterplot(
+            x=adata_fu[:, gene_x].X.toarray().ravel(),
+            y=adata_fu[:, gene_y].layers["unspliced"].toarray().ravel(),
+            hue=adata_fu.obs["alignment_type"],
+            s=3,
+            edgecolor=None,
+            rasterized=True,
+            ax=ax,
         )
-    fig.savefig(os.path.join(FIG_DIR, "suppfig1.pdf"))
+        ax.text(
+            0.05,
+            0.95,
+            f"$\\rho_{{SE}}={rho_se:.2f}$\n$\\rho_{{PE}}={rho_pe:.2f}$",
+            size=8,
+            ha="left",
+            va="top",
+            transform=ax.transAxes,
+        )
+        ax.set_xlabel(gene_x)
+        ax.set_ylabel(gene_y)
+        ax.get_legend().remove()
+    handles, labels = axs_top.flat[0].get_legend_handles_labels()
+    sub_figs[0].legend(
+        handles,
+        labels,
+        markerscale=3,
+        title="sample alignment type",
+        ncols=2,
+        loc="outside upper center",
+    )
+    sub_figs[0].supylabel("Velocyto unspliced counts")
+    sub_figs[0].supxlabel("Cell Ranger counts")
+    sub_figs[0].text(
+        0.01, 0.98, "A", transform=(sub_figs[0].transSubfigure), **AXLAB_KWS
+    )
+
+    axs_bottom = sub_figs[1].subplots(1, 3, width_ratios=[2, 1, 1])
+
+    # Positions of overlapping transcripts RPL35 (+) and IQCG (-)
+    transcripts = {
+        "MIF": {
+            "strand": "+",
+            "start": 23_894_383,
+            "end": 23_895_223,
+            "exons": [
+                [23_894_383, 23_894_582],
+                [23_894_772, 23_894_944],
+                [23_895_040, 23_895_223],
+            ],
+            "cds": [
+                [23_894_475, 23_894_582],
+                [23_894_772, 23_894_944],
+                [23_895_040, 23_895_103],
+            ],
+            "n_arrows": 11,
+        },
+        "MIF-AS1": {
+            "strand": "-",
+            "start": 23_894_426,
+            "end": 23_896_110,
+            "exons": [
+                [23_895_829, 23_896_110],
+                [23_894_426, 23_895_532],
+            ],
+            "n_arrows": 20,
+        },
+    }
+
+    axs_bottom[0].plot(
+        [transcripts["MIF-AS1"]["end"], transcripts["MIF-AS1"]["end"] + 200],
+        [-0.2, -0.2],
+        c="grey",
+        ls=":",
+    )
+    visualize_gene_overlap(
+        axs_bottom[0], transcripts, colors=mpl.colormaps["tab20"].colors[:4]
+    )
+    sub_figs[1].text(0.01, 0.98, "B", transform=sub_figs[1].transSubfigure, **AXLAB_KWS)
+
+    rho = stats.pearsonr(
+        adata_stewart[:, "MIF"].X.toarray().ravel(),
+        adata_stewart[:, "MIF-AS1"].layers["spliced"].toarray().ravel(),
+    )[0]
+    sns.scatterplot(
+        x=adata_stewart[:, "MIF"].X.toarray().ravel(),
+        y=adata_stewart[:, "MIF-AS1"].layers["spliced"].toarray().ravel(),
+        c="k",
+        s=3,
+        edgecolor=None,
+        rasterized=True,
+        ax=axs_bottom[1],
+    )
+    axs_bottom[1].text(
+        0.05,
+        0.95,
+        f"$\\rho={rho:.2f}$",
+        size=8,
+        ha="left",
+        va="top",
+        transform=axs_bottom[1].transAxes,
+    )
+    axs_bottom[1].set_title("B cells")
+
+    sns.scatterplot(
+        x=adata_fu[:, "MIF"].X.toarray().ravel(),
+        y=adata_fu[:, "MIF-AS1"].layers["spliced"].toarray().ravel(),
+        hue=adata_fu.obs["alignment_type"],
+        s=3,
+        edgecolor=None,
+        rasterized=True,
+        ax=axs_bottom[2],
+    )
+    rho_se = stats.pearsonr(
+        adata_fu[adata_fu.obs["alignment_type"] == "SE", "MIF"].X.toarray().ravel(),
+        adata_fu[adata_fu.obs["alignment_type"] == "SE", "MIF-AS1"]
+        .layers["spliced"]
+        .toarray()
+        .ravel(),
+    )[0]
+    rho_pe = stats.pearsonr(
+        adata_fu[adata_fu.obs["alignment_type"] == "PE", "MIF"].X.toarray().ravel(),
+        adata_fu[adata_fu.obs["alignment_type"] == "PE", "MIF-AS1"]
+        .layers["spliced"]
+        .toarray()
+        .ravel(),
+    )[0]
+    axs_bottom[2].text(
+        0.05,
+        0.95,
+        f"$\\rho_{{SE}}={rho_se:.2f}$\n$\\rho_{{PE}}={rho_pe:.2f}$",
+        size=8,
+        ha="left",
+        va="top",
+        transform=axs_bottom[2].transAxes,
+    )
+    axs_bottom[2].set_title("T cells")
+    legend = axs_bottom[2].legend(
+        loc="center left",
+        bbox_to_anchor=(1.0, 0.5),
+        markerscale=3,
+        title="sample\nalignment\ntype",
+    )
+    legend.get_title().set_ha("center")
+
+    for i, ax in enumerate(axs_bottom[1:]):
+        ax.set_xlabel("MIF\nCell Ranger")
+        ax.set_ylabel("velocyto spliced\nMIF-AS1")
+        ax.text(
+            -0.41,
+            0.98,
+            string.ascii_uppercase[i + 2],
+            transform=mpl.transforms.blended_transform_factory(
+                ax.transAxes, sub_figs[1].transSubfigure
+            ),
+            **AXLAB_KWS,
+        )
+
+    fig.savefig(os.path.join(FIG_DIR, "s1fig"))
     plt.close()
 
 
 def supplementary_figure_2():
-    # Make figure
-    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH), layout="constrained")
-    sub_figs = fig.subfigures(3, 1)
+    # Load the data
+    overlapping_genes = read_dataframes("gene_overlaps", ["stewart"])
+    adata = sc.read_h5ad("../data/stewart/adata/adata_raw_velocyto.h5ad")
 
-    # Load and plot AnnData objects for retina dataset
-    adatas_retina = {
-        method: sc.read_h5ad(f"../out/retina/adata_{method}.h5ad")
-        for method in METHODS_ORDER[:3]
-    }
-    axs_top = sub_figs[0].subplots(1, 3)
-    for i, (method, adata) in enumerate(adatas_retina.items()):
-        scv.pl.velocity_embedding_grid(
-            adata,
-            basis="umap",
-            color="Annotation",
-            size=20,
-            alpha=0.5,
-            arrow_length=2,
-            arrow_size=(10, 18, 8),
-            arrow_color="black",
-            density=0.8,
-            show=False,
-            ax=axs_top[i],
-            title=method,
-            legend_loc="right margin" if i == len(adatas_retina) - 1 else "none",
-        )
+    # Subset to genes with mean expression >= 1
+    overlapping_genes = overlapping_genes[
+        np.asarray(adata[:, overlapping_genes.Gene_x].X.mean(axis=0) >= 1).ravel()
+    ]
 
-    # Load and plot AnnData objects for Stewart dataset
-    adatas_stewart = {
-        method: sc.read_h5ad(f"../out/stewart/adata_{method}.h5ad")
-        for method in METHODS_ORDER[:3]
-    }
-    axs_mid = sub_figs[1].subplots(1, 3)
-    for i, (method, adata) in enumerate(adatas_stewart.items()):
-        scv.pl.velocity_embedding_grid(
-            adata,
-            basis="umap",
-            color="cell_type",
-            size=20,
-            alpha=0.5,
-            arrow_length=2,
-            arrow_size=(10, 18, 8),
-            arrow_color="black",
-            density=0.8,
-            show=False,
-            ax=axs_mid[i],
-            title=method,
-            legend_loc="right margin" if i == len(adatas_stewart) - 1 else "none",
-        )
+    overlapping_genes_scatter = overlapping_genes.sort_values(
+        by=["overlap_relative_gene_x", "overlap_bases"], ascending=False
+    ).reset_index(drop=True)
 
-    # Load and plot AnnData objects for Fu dataset
-    adatas_fu = {
-        method: sc.read_h5ad(f"../out/fu/adata_{method}.h5ad")
-        for method in METHODS_ORDER[:3]
-    }
-    axs_bottom = sub_figs[2].subplots(1, 3)
-    for i, (method, adata) in enumerate(adatas_fu.items()):
-        scv.pl.velocity_embedding_grid(
-            adata,
-            basis="umap",
-            color="groups",
-            size=20,
-            alpha=0.5,
-            arrow_length=2,
-            arrow_size=(10, 18, 8),
-            arrow_color="black",
-            density=0.8,
-            show=False,
-            ax=axs_bottom[i],
-            title=method,
-            legend_loc="right margin" if i == len(adatas_fu) - 1 else "none",
+    fig, axs = plt.subplots(
+        2, 4, figsize=(FIG_WIDTH, FIG_WIDTH / 2), layout="constrained"
+    )
+    for i, row in overlapping_genes_scatter.head(8).iterrows():
+        gene_x = row["Gene_x"]
+        gene_y = row["Gene_y"]
+        x = adata[:, gene_x].X.toarray().ravel()
+        y = adata[:, gene_y].X.toarray().ravel()
+        rho = stats.pearsonr(x, y)[0]
+        ax = axs.flat[i]
+        ax.scatter(
+            x,
+            y,
+            s=0.5,
+            c="k",
+            rasterized=True,
         )
+        ax.text(
+            0.95,
+            0.95,
+            f"$\\rho={rho:.2f}$",
+            size=8,
+            ha="right",
+            va="top",
+            transform=ax.transAxes,
+        )
+        ax.set_xlabel(gene_x)
+        ax.set_ylabel(gene_y)
+    fig.supxlabel("Cell Ranger counts")
+    fig.supylabel("velocyto unspliced counts")
 
-    for i, label in enumerate(string.ascii_uppercase[:3]):
-        sub_figs[i].text(
-            0.01, 0.98, label, transform=sub_figs[i].transSubfigure, **AXLAB_KWS
-        )
-    fig.savefig(os.path.join(FIG_DIR, "suppfig2.pdf"))
+    fig.savefig(os.path.join(FIG_DIR, "s2fig"))
     plt.close()
 
 
@@ -717,7 +825,7 @@ def figure_3():
     handles, labels = sub_figs[0].get_axes()[0].get_legend_handles_labels()
     fig.legend(
         handles,
-        labels,
+        [METHODS_DICT[lab] for lab in labels],
         ncols=5,
         loc="outside lower center",
     )
@@ -817,7 +925,7 @@ def figure_4():
         loc="outside lower center",
     )
     for i, sub_fig in enumerate(
-        sub_figs_top.tolist() + sub_figs_center.tolist() + sub_figs_bottom.tolist()
+        np.hstack([sub_figs_top, sub_figs_center, sub_figs_bottom])
     ):
         sub_fig.text(
             0.02,
@@ -827,6 +935,85 @@ def figure_4():
             **AXLAB_KWS,
         )
     fig.savefig(os.path.join(FIG_DIR, "fig4"))
+    plt.close()
+
+
+def supplementary_figure_3():
+    # Load all DataFrames
+    spliced_unspliced_diff = read_dataframes("spliced_unspliced_diff")
+    spliced_unspliced_corr = read_dataframes("spliced_unspliced_corr")
+
+    # Make figure
+    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH / 5 * 4), layout="constrained")
+    sub_figs = fig.subfigures(2, 1)
+
+    # Difference in spliced/unspliced/ambiguous counts per cell
+    sub_figs_top = sub_figs[0].subfigures(1, 3)
+    for sub_fig, splice_state in zip(sub_figs_top, SPLICE_STATES):
+        split_boxplot(
+            sub_fig,
+            spliced_unspliced_diff[
+                (spliced_unspliced_diff["genes"] == "all")
+                & (spliced_unspliced_diff["splice_state"] == splice_state)
+            ],
+            "diff",
+            y_label="difference",
+            palette=PALETTE,
+        )
+        sub_fig.suptitle(splice_state, size=10)
+        if splice_state != SPLICE_STATES[0]:
+            sub_fig.get_axes()[0].set_ylabel("")
+        for ax in sub_fig.get_axes():
+            ax.axhline(0, color="grey", linestyle="--", zorder=0)
+
+    handles, labels = sub_figs_top[0].get_axes()[0].get_legend_handles_labels()
+    sub_figs[0].legend(
+        handles,
+        [METHODS_DICT[lab] for lab in labels],
+        handlelength=1.5,
+        ncols=3,
+        loc="outside lower center",
+    )
+
+    # Pearson correlation between methods
+    sub_figs_bottom = sub_figs[1].subfigures(1, 3)
+    for sub_fig, splice_state in zip(sub_figs_bottom, SPLICE_STATES):
+        split_boxplot(
+            sub_fig,
+            spliced_unspliced_corr[
+                spliced_unspliced_corr["splice_state"] == splice_state
+            ],
+            "pearsonr",
+            y_label="Pearson corr.",
+            hue="comparison",
+            palette=PALETTE_COMP,
+        )
+        sub_fig.suptitle(splice_state, size=10)
+        if splice_state != SPLICE_STATES[0]:
+            sub_fig.get_axes()[0].set_ylabel("")
+
+    handles, labels = sub_figs_bottom[0].get_axes()[0].get_legend_handles_labels()
+    sub_figs[1].legend(
+        handles,
+        [
+            " vs.\n".join(
+                [METHODS_DICT[lab.split("_")[0]], METHODS_DICT[lab.split("_")[1]]]
+            )
+            for lab in labels
+        ],
+        handlelength=1.5,
+        ncols=6,
+        loc="outside lower center",
+    )
+    for i, sub_fig in enumerate(np.hstack([sub_figs_top, sub_figs_bottom])):
+        sub_fig.text(
+            0.02,
+            0.98,
+            string.ascii_uppercase[i],
+            transform=sub_fig.transSubfigure,
+            **AXLAB_KWS,
+        )
+    fig.savefig(os.path.join(FIG_DIR, "s3fig"))
     plt.close()
 
 
@@ -859,49 +1046,122 @@ def figure_5():
     fig = plt.figure(figsize=(FIG_WIDTH, FIG_HEIGHT_MAX), layout="constrained")
     sub_figs = fig.subfigures(1, 2, width_ratios=[2, 1])
 
-    axs_top = sub_figs[0].subplots(4, 2)
+    axs_left = sub_figs[0].subplots(4, 2)
     for i, (method, adata) in enumerate(adatas_pancreas.items()):
+        if method != "tidesurf":
+            common_velocity_genes = pd.Index(
+                set(adata[:, adata.var["velocity_genes"]].var_names)
+                .union(
+                    set(
+                        adatas_pancreas["tidesurf"][
+                            :, adatas_pancreas["tidesurf"].var["velocity_genes"]
+                        ].var_names
+                    )
+                )
+                .intersection(adata.var_names)
+                .intersection(adatas_pancreas["tidesurf"].var_names)
+            )
+            adata.obs["cosine"] = cosine(
+                adata[:, common_velocity_genes].obsm["velocity_umap"],
+                adatas_pancreas["tidesurf"][:, common_velocity_genes].obsm[
+                    "velocity_umap"
+                ],
+                axis=1,
+            )
         scv.pl.velocity_embedding_grid(
             adata,
             basis="umap",
-            color="clusters",
-            size=20,
+            color="clusters" if method == "tidesurf" else "cosine",
+            color_map=None
+            if method == "tidesurf"
+            else sns.color_palette("icefire", as_cmap=True),
+            colorbar=False,
+            vmin=-1,
+            vmax=1,
+            sort_order=False,
+            size=10,
             alpha=0.5,
             arrow_length=2,
             arrow_size=(10, 18, 8),
             arrow_color="black",
             density=0.8,
             show=False,
-            ax=axs_top[i, 0],
+            ax=axs_left[i, 0],
             title=method,
         )
-        axs_top[i, 0].axis("equal")
-    # handles, labels = axs_top[0].get_legend_handles_labels()
-    axs_top[-1, 0].legend(ncols=2, loc="upper center", bbox_to_anchor=(0.5, 0.0))
+        if method != "tidesurf":
+            cax = axs_left[i, 0].inset_axes([0.05, 0.15, 0.2, 0.04])
+            cbar = fig.colorbar(
+                axs_left[i, 0].collections[1],
+                ax=axs_left[i, 0],
+                cax=cax,
+                orientation="horizontal",
+            )
+            cax.tick_params(labelsize=8)
+            cbar.set_label("cosine sim.", fontsize=8, labelpad=0.05)
+            cbar.solids.set(alpha=1)
+        axs_left[i, 0].axis("equal")
+    axs_left[-1, 0].legend(ncols=2, loc="upper center", bbox_to_anchor=(0.5, 0.0))
 
-    # axs_center = sub_figs[1].subplots(4, 1).flat
     for i, (method, adata) in enumerate(adatas_stewart.items()):
+        if method != "tidesurf":
+            common_velocity_genes = pd.Index(
+                set(adata[:, adata.var["velocity_genes"]].var_names)
+                .union(
+                    set(
+                        adatas_stewart["tidesurf"][
+                            :, adatas_stewart["tidesurf"].var["velocity_genes"]
+                        ].var_names
+                    )
+                )
+                .intersection(adata.var_names)
+                .intersection(adatas_stewart["tidesurf"].var_names)
+            )
+            adata.obs["cosine"] = cosine(
+                adata[:, common_velocity_genes].obsm["velocity_umap"][:, :2],
+                adatas_stewart["tidesurf"][:, common_velocity_genes].obsm[
+                    "velocity_umap"
+                ][:, :2],
+                axis=1,
+            )
         scv.pl.velocity_embedding_grid(
             adata,
             basis="umap",
-            color="cell_type",
-            size=20,
+            color="cell_type" if method == "tidesurf" else "cosine",
+            color_map=None
+            if method == "tidesurf"
+            else sns.color_palette("icefire", as_cmap=True),
+            colorbar=False,
+            vmin=-1,
+            vmax=1,
+            sort_order=False,
+            size=10,
             alpha=0.5,
             arrow_length=2,
             arrow_size=(10, 18, 8),
             arrow_color="black",
             density=0.8,
             show=False,
-            ax=axs_top[i, 1],
+            ax=axs_left[i, 1],
             title=method,
         )
-        axs_top[i, 1].axis("equal")
-    # handles, labels = axs_center[0].get_legend_handles_labels()
-    axs_top[-1, 1].legend(ncols=2, loc="upper center", bbox_to_anchor=(0.5, 0.0))
+        if method != "tidesurf":
+            cax = axs_left[i, 1].inset_axes([0.6, 0.25, 0.2, 0.04])
+            cbar = fig.colorbar(
+                axs_left[i, 1].collections[1],
+                ax=axs_left[i, 1],
+                cax=cax,
+                orientation="horizontal",
+            )
+            cax.tick_params(labelsize=8)
+            cbar.set_label("cosine sim.", fontsize=8, labelpad=0.05)
+            cbar.solids.set(alpha=1)
+        axs_left[i, 1].axis("equal")
+    axs_left[-1, 1].legend(ncols=2, loc="upper center", bbox_to_anchor=(0.5, 0.0))
 
-    sub_figs_bottom = sub_figs[1].subfigures(3, 1, height_ratios=[2, 2, 3])
+    sub_figs_right = sub_figs[1].subfigures(3, 1, height_ratios=[2, 2, 3])
     split_boxplot(
-        sub_figs_bottom[0],
+        sub_figs_right[0],
         velocities_cosine,
         "cosine_similarity",
         y_label="cosine similarity",
@@ -909,22 +1169,28 @@ def figure_5():
         palette=PALETTE_COMP,
     )
     split_boxplot(
-        sub_figs_bottom[1],
+        sub_figs_right[1],
         velocities_corr,
         "pearsonr",
         y_label="Pearson corr.",
         hue="comparison",
         palette=PALETTE_COMP,
     )
-    handles, labels = sub_figs_bottom[0].get_axes()[0].get_legend_handles_labels()
-    sub_figs_bottom[2].legend(
+    handles, labels = sub_figs_right[0].get_axes()[0].get_legend_handles_labels()
+    sub_figs_right[2].legend(
         handles,
-        [lab.replace("_", " vs. ") for lab in labels],
+        [
+            " vs. ".join(
+                [METHODS_DICT[lab.split("_")[0]], METHODS_DICT[lab.split("_")[1]]]
+            )
+            for lab in labels
+        ],
+        handlelength=1.5,
         loc="upper center",
     )
 
     labx, laby = 0.02, 0.995
-    for i, ax in enumerate(axs_top[0, :]):
+    for i, ax in enumerate(axs_left[0, :]):
         fig.text(
             labx,
             laby,
@@ -934,7 +1200,7 @@ def figure_5():
             ),
             **AXLAB_KWS,
         )
-    sub_figs_bottom[0].text(
+    sub_figs_right[0].text(
         labx,
         laby,
         "C",
@@ -943,12 +1209,12 @@ def figure_5():
         ),
         **AXLAB_KWS,
     )
-    sub_figs_bottom[1].text(
+    sub_figs_right[1].text(
         labx,
         laby,
         "D",
         transform=mpl.transforms.blended_transform_factory(
-            sub_figs[1].transSubfigure, sub_figs_bottom[1].transSubfigure
+            sub_figs[1].transSubfigure, sub_figs_right[1].transSubfigure
         ),
         **AXLAB_KWS,
     )
@@ -956,53 +1222,398 @@ def figure_5():
     plt.close()
 
 
-def supplementary_figure_3():
+def supplementary_figure_4():
     # Load all DataFrames
     velocities_cosine = read_dataframes("velocities_cosine")
     comp_mapping = {
         "velocyto_tidesurf": "tidesurf_velocyto",
         "alevin-fry_tidesurf": "tidesurf_alevin-fry",
+        "starsolo_tidesurf": "tidesurf_starsolo",
         "velocyto_alevin-fry": "velocyto_alevin-fry",
+        "velocyto_starsolo": "velocyto_starsolo",
+        "alevin-fry_starsolo": "alevin-fry_starsolo",
     }
     velocities_cosine["comparison"] = velocities_cosine["comparison"].map(comp_mapping)
     velocities_corr = read_dataframes("velocities_corr")
     velocities_corr["comparison"] = velocities_corr["comparison"].map(comp_mapping)
 
-    # Make figure
-    fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH_SINGLE / 1.5), layout="constrained")
-    sub_figs = fig.subfigures(1, 3)
+    # Load AnnData objects
+    adatas_retina = {
+        method: sc.read_h5ad(f"../out/retina/adata_{method}.h5ad")
+        for method in METHODS_ORDER[:4]
+    }
+    adatas_fu = {
+        method: sc.read_h5ad(f"../out/fu/adata_{method}.h5ad")
+        for method in METHODS_ORDER[:4]
+    }
 
+    # Make figure
+    fig = plt.figure(figsize=(FIG_WIDTH, FIG_HEIGHT_MAX), layout="constrained")
+    sub_figs = fig.subfigures(1, 2, width_ratios=[2, 1])
+
+    axs_left = sub_figs[0].subplots(4, 2, width_ratios=[4, 5])
+    for i, (method, adata) in enumerate(adatas_retina.items()):
+        if method != "tidesurf":
+            common_velocity_genes = pd.Index(
+                set(adata[:, adata.var["velocity_genes"]].var_names)
+                .union(
+                    set(
+                        adatas_retina["tidesurf"][
+                            :, adatas_retina["tidesurf"].var["velocity_genes"]
+                        ].var_names
+                    )
+                )
+                .intersection(adata.var_names)
+                .intersection(adatas_retina["tidesurf"].var_names)
+            )
+            adata.obs["cosine"] = cosine(
+                adata[:, common_velocity_genes].obsm["velocity_umap"],
+                adatas_retina["tidesurf"][:, common_velocity_genes].obsm[
+                    "velocity_umap"
+                ],
+                axis=1,
+            )
+        scv.pl.velocity_embedding_grid(
+            adata,
+            basis="umap",
+            color="Annotation" if method == "tidesurf" else "cosine",
+            color_map=None
+            if method == "tidesurf"
+            else sns.color_palette("icefire", as_cmap=True),
+            colorbar=False,
+            vmin=-1,
+            vmax=1,
+            sort_order=False,
+            size=10,
+            alpha=0.5,
+            arrow_length=2,
+            arrow_size=(10, 18, 8),
+            arrow_color="black",
+            density=0.8,
+            show=False,
+            ax=axs_left[i, 0],
+            title=method,
+        )
+        if method != "tidesurf":
+            cax = axs_left[i, 0].inset_axes([0.6, 0.2, 0.25, 0.04])
+            cbar = fig.colorbar(
+                axs_left[i, 0].collections[1],
+                ax=axs_left[i, 0],
+                cax=cax,
+                orientation="horizontal",
+            )
+            cax.tick_params(labelsize=8)
+            cbar.set_label("cosine sim.", fontsize=8, labelpad=0.05)
+            cbar.solids.set(alpha=1)
+        axs_left[i, 0].axis("equal")
+    axs_left[-1, 0].legend(ncols=2, loc="upper center", bbox_to_anchor=(0.5, 0.0))
+
+    for i, (method, adata) in enumerate(adatas_fu.items()):
+        if method != "tidesurf":
+            common_velocity_genes = pd.Index(
+                set(adata[:, adata.var["velocity_genes"]].var_names)
+                .union(
+                    set(
+                        adatas_fu["tidesurf"][
+                            :, adatas_fu["tidesurf"].var["velocity_genes"]
+                        ].var_names
+                    )
+                )
+                .intersection(adata.var_names)
+                .intersection(adatas_fu["tidesurf"].var_names)
+            )
+            adata.obs["cosine"] = cosine(
+                adata[:, common_velocity_genes].obsm["velocity_umap"],
+                adatas_fu["tidesurf"][:, common_velocity_genes].obsm["velocity_umap"],
+                axis=1,
+            )
+        scv.pl.velocity_embedding_grid(
+            adata,
+            basis="umap",
+            color="groups" if method == "tidesurf" else "cosine",
+            color_map=None
+            if method == "tidesurf"
+            else sns.color_palette("icefire", as_cmap=True),
+            colorbar=False,
+            vmin=-1,
+            vmax=1,
+            sort_order=False,
+            size=5,
+            alpha=0.5,
+            arrow_length=2,
+            arrow_size=(10, 18, 8),
+            arrow_color="black",
+            density=0.8,
+            show=False,
+            ax=axs_left[i, 1],
+            title=method,
+        )
+        if method != "tidesurf":
+            cax = axs_left[i, 1].inset_axes([0.7, 0.2, 0.2, 0.04])
+            cbar = fig.colorbar(
+                axs_left[i, 1].collections[1],
+                ax=axs_left[i, 1],
+                cax=cax,
+                orientation="horizontal",
+            )
+            cax.tick_params(labelsize=8)
+            cbar.set_label("cosine sim.", fontsize=8, labelpad=0.05)
+            cbar.solids.set(alpha=1)
+        axs_left[i, 1].axis("equal")
+    axs_left[-1, 1].legend(ncols=4, loc="upper center", bbox_to_anchor=(0.5, 0.0))
+
+    sub_figs_right = sub_figs[1].subfigures(3, 1, height_ratios=[2, 2, 3])
     split_boxplot(
-        sub_figs[0],
+        sub_figs_right[0],
         velocities_cosine,
         "cosine_similarity",
         y_label="cosine similarity",
         hue="comparison",
-        palette="Accent",
+        palette=PALETTE_COMP,
     )
     split_boxplot(
-        sub_figs[1],
+        sub_figs_right[1],
         velocities_corr,
         "pearsonr",
         y_label="Pearson corr.",
         hue="comparison",
-        palette="Accent",
+        palette=PALETTE_COMP,
     )
-    handles, labels = sub_figs[0].get_axes()[0].get_legend_handles_labels()
-    sub_figs[2].legend(
+    handles, labels = sub_figs_right[0].get_axes()[0].get_legend_handles_labels()
+    sub_figs_right[2].legend(
         handles,
-        [lab.replace("_", " vs.\n") for lab in labels],
-        loc="center",
+        [
+            " vs. ".join(
+                [METHODS_DICT[lab.split("_")[0]], METHODS_DICT[lab.split("_")[1]]]
+            )
+            for lab in labels
+        ],
+        handlelength=1.5,
+        loc="upper center",
     )
-    for i, label in enumerate(string.ascii_uppercase[:2]):
-        sub_figs[i].text(
-            0.02, 0.98, label, transform=sub_figs[i].transSubfigure, **AXLAB_KWS
+
+    labx, laby = 0.02, 0.995
+    for i, ax in enumerate(axs_left[0, :]):
+        fig.text(
+            labx,
+            laby,
+            string.ascii_uppercase[i],
+            transform=mpl.transforms.blended_transform_factory(
+                ax.transAxes, fig.transFigure
+            ),
+            **AXLAB_KWS,
         )
-    fig.savefig(os.path.join(FIG_DIR, "suppfig3.pdf"))
+    sub_figs_right[0].text(
+        labx,
+        laby,
+        "C",
+        transform=mpl.transforms.blended_transform_factory(
+            sub_figs[1].transSubfigure, fig.transFigure
+        ),
+        **AXLAB_KWS,
+    )
+    sub_figs_right[1].text(
+        labx,
+        laby,
+        "D",
+        transform=mpl.transforms.blended_transform_factory(
+            sub_figs[1].transSubfigure, sub_figs_right[1].transSubfigure
+        ),
+        **AXLAB_KWS,
+    )
+    fig.savefig(os.path.join(FIG_DIR, "s4fig"))
     plt.close()
 
 
-def supplementary_figure_4():
+def figure_6():
+    # Load AnnData objects
+    adatas_pancreas = {
+        method: sc.read_h5ad(f"../out/pancreas/adata_{method}.h5ad")
+        for method in METHODS_ORDER[:4]
+    }
+    adatas_stewart = {
+        method: sc.read_h5ad(f"../out/stewart/adata_{method}.h5ad")
+        for method in METHODS_ORDER[:4]
+    }
+
+    fig, axs = plt.subplots(
+        4, 2, figsize=(FIG_WIDTH, FIG_HEIGHT_MAX), layout="constrained"
+    )
+    for i, (method, adata) in enumerate(adatas_pancreas.items()):
+        sc.pl.umap(
+            adata,
+            color="clusters",
+            size=20,
+            alpha=0.1,
+            show=False,
+            ax=axs[i, 0],
+        )
+        scv.pl.paga(
+            adata,
+            basis="umap",
+            min_edge_width=0.2,
+            max_edge_width=1,
+            node_size_scale=0.7,
+            arrowsize=8,
+            show=False,
+            ax=axs[i, 0],
+            title=method,
+        )
+        axs[i, 0].axis("equal")
+        axs[i, 0].set_xlabel("")
+        axs[i, 0].set_ylabel("")
+        axs[i, 0].get_legend().remove()
+
+        # Remove any Text artists added via ax.text by PAGA
+        for txt in axs[i, 0].texts[:]:
+            txt.remove()
+
+    handles, labels = axs[-1, 0].get_legend_handles_labels()
+    axs[-1, 0].legend(ncols=3, loc="upper center", bbox_to_anchor=(0.5, 0.0))
+
+    for i, (method, adata) in enumerate(adatas_stewart.items()):
+        sc.pl.umap(
+            adata,
+            color="cell_type",
+            size=20,
+            alpha=0.1,
+            show=False,
+            ax=axs[i, 1],
+        )
+        scv.pl.paga(
+            adata,
+            basis="umap",
+            min_edge_width=0.2,
+            max_edge_width=1,
+            node_size_scale=0.7,
+            arrowsize=8,
+            show=False,
+            ax=axs[i, 1],
+            title=method,
+        )
+        axs[i, 1].axis("equal")
+        axs[i, 1].set_xlabel("")
+        axs[i, 1].set_ylabel("")
+        axs[i, 1].get_legend().remove()
+
+        # Remove any Text artists added via ax.text by PAGA
+        for txt in axs[i, 1].texts[:]:
+            txt.remove()
+
+    handles, labels = axs[-1, 1].get_legend_handles_labels()
+    axs[-1, 1].legend(
+        handles, labels, ncols=3, loc="upper center", bbox_to_anchor=(0.5, 0.0)
+    )
+
+    for i, ax in enumerate(axs[0, :]):
+        ax.text(
+            0.02,
+            1.15,
+            string.ascii_uppercase[i],
+            transform=ax.transAxes,
+            **AXLAB_KWS,
+        )
+
+    fig.savefig(os.path.join(FIG_DIR, "fig6"))
+    plt.close()
+
+
+def supplementary_figure_5():
+    # Load AnnData objects
+    adatas_retina = {
+        method: sc.read_h5ad(f"../out/retina/adata_{method}.h5ad")
+        for method in METHODS_ORDER[:4]
+    }
+    adatas_fu = {
+        method: sc.read_h5ad(f"../out/fu/adata_{method}_paga.h5ad")
+        for method in METHODS_ORDER[:4]
+    }
+
+    fig, axs = plt.subplots(
+        4,
+        2,
+        figsize=(FIG_WIDTH / 3 * 2, FIG_HEIGHT_MAX),
+        width_ratios=[4, 5],
+        layout="constrained",
+    )
+    for i, (method, adata) in enumerate(adatas_retina.items()):
+        sc.pl.umap(
+            adata,
+            color="Annotation",
+            size=20,
+            alpha=0.1,
+            show=False,
+            ax=axs[i, 0],
+        )
+        scv.pl.paga(
+            adata,
+            basis="umap",
+            min_edge_width=0.2,
+            max_edge_width=1,
+            node_size_scale=0.7,
+            arrowsize=8,
+            show=False,
+            ax=axs[i, 0],
+            title=method,
+        )
+        axs[i, 0].axis("equal")
+        axs[i, 0].set_xlabel("")
+        axs[i, 0].set_ylabel("")
+        axs[i, 0].get_legend().remove()
+
+        # Remove any Text artists added via ax.text by PAGA
+        for txt in axs[i, 0].texts[:]:
+            txt.remove()
+
+    handles, labels = axs[-1, 0].get_legend_handles_labels()
+    axs[-1, 0].legend(ncols=2, loc="upper center", bbox_to_anchor=(0.5, 0.0))
+
+    for i, (method, adata) in enumerate(adatas_fu.items()):
+        sc.pl.umap(
+            adata,
+            color="groups",
+            size=20,
+            alpha=0.01,
+            show=False,
+            ax=axs[i, 1],
+        )
+        scv.pl.paga(
+            adata,
+            basis="umap",
+            min_edge_width=0.2,
+            max_edge_width=1,
+            node_size_scale=0.7,
+            arrowsize=8,
+            show=False,
+            ax=axs[i, 1],
+            title=method,
+        )
+        axs[i, 1].axis("equal")
+        axs[i, 1].set_xlabel("")
+        axs[i, 1].set_ylabel("")
+        axs[i, 1].get_legend().remove()
+
+        # Remove any Text artists added via ax.text by PAGA
+        for txt in axs[i, 1].texts[:]:
+            txt.remove()
+
+    handles, labels = axs[-1, 1].get_legend_handles_labels()
+    axs[-1, 1].legend(ncols=3, loc="upper center", bbox_to_anchor=(0.5, 0.0))
+
+    for i, ax in enumerate(axs[0, :]):
+        ax.text(
+            0.02,
+            1.15,
+            string.ascii_uppercase[i],
+            transform=ax.transAxes,
+            **AXLAB_KWS,
+        )
+
+    fig.savefig(os.path.join(FIG_DIR, "s5fig"))
+    plt.close()
+
+
+def supplementary_figure_6():
     # Load runtimes DataFrame
     run_metrics = pd.read_csv("../out/runtimes_cluster.csv", index_col=0)
     run_metrics["runtime"] = run_metrics["runtime"].astype("timedelta64[s]")
@@ -1072,6 +1683,9 @@ def main():
     supplementary_figure_3()
     figure_5()
     supplementary_figure_4()
+    figure_6()
+    supplementary_figure_5()
+    supplementary_figure_6()
 
 
 if __name__ == "__main__":
