@@ -785,7 +785,7 @@ def supplementary_figure_2():
         ax.set_xlabel(gene_x)
         ax.set_ylabel(gene_y)
     fig.supxlabel("Cell Ranger counts")
-    fig.supylabel("velocyto unspliced counts")
+    fig.supylabel("Cell Ranger counts")
 
     fig.savefig(os.path.join(FIG_DIR, "s2fig"))
     plt.close()
@@ -1669,7 +1669,7 @@ def supplementary_figure_6():
     for sub_fig, lab in zip(sub_figs, string.ascii_uppercase[: len(sub_figs)]):
         sub_fig.text(0.015, 0.98, lab, **AXLAB_KWS)
 
-    fig.savefig(os.path.join(FIG_DIR, "suppfig4.pdf"))
+    fig.savefig(os.path.join(FIG_DIR, "s6fig"))
     plt.close()
 
 
