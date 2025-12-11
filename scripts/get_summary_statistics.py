@@ -1,9 +1,9 @@
 import pandas as pd
-
 from make_figures import read_dataframes
 
 if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
+    pd.set_option("display.max_rows", None)
 
     # Total counts and counts diff
     for df_name in ["total_counts", "counts_diff"]:
@@ -12,10 +12,24 @@ if __name__ == "__main__":
         print(df[df["genes"] == "all"].groupby(["method", "dataset"]).describe())
         print("\n")
 
+        print(
+            f"==== {df_name.replace('_', ' ').capitalize()} (by alignment type for Fu) ===="
+        )
+        print(
+            df[df["genes"] == "all"]
+            .groupby(["method", "dataset", "alignment_type"], observed=True)
+            .describe()
+        )
+        print("\n")
+
     # Correlation with Cell Ranger
     counts_corr = read_dataframes("counts_corr_cellranger")
     print("==== Corr. with Cell Ranger ====")
-    print(counts_corr.groupby(["method", "dataset"]).describe())
+    print(
+        counts_corr.groupby(
+            ["method", "dataset", "alignment_type"], observed=True, dropna=False
+        ).describe()
+    )
     print("\n")
 
     # Cosine similarity with Cell Ranger
@@ -39,12 +53,40 @@ if __name__ == "__main__":
         )
         print("\n")
 
+        if "alignment_type" in df.columns:
+            print(
+                f"==== {df_name.replace('_', ' ').capitalize()} (by alignment type for Fu) ===="
+            )
+            print(
+                df[df["genes"] == "all"]
+                .groupby(
+                    ["method", "dataset", "alignment_type", "splice_state"],
+                    observed=True,
+                )
+                .describe()
+            )
+            print("\n")
+
     # Spliced and unspliced cosine similarity and correlation
     for df_name in ["spliced_unspliced_cosine", "spliced_unspliced_corr"]:
         df = read_dataframes(df_name)
         print(f"==== {df_name.replace('_', ' ').capitalize()} ====")
         print(df.groupby(["comparison", "dataset", "splice_state"]).describe())
         print("\n")
+
+        if "alignment_type" in df.columns:
+            print(
+                f"==== {df_name.replace('_', ' ').capitalize()} (by alignment type for Fu) ===="
+            )
+            print(
+                df[df["genes"] == "all"]
+                .groupby(
+                    ["method", "dataset", "alignment_type", "splice_state"],
+                    observed=True,
+                )
+                .describe()
+            )
+            print("\n")
 
     # Velocities
     for df_name in [
