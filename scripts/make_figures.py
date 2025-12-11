@@ -1080,14 +1080,14 @@ def figure_5():
             vmax=1,
             sort_order=False,
             size=10,
-            alpha=0.5,
+            alpha=1,
             arrow_length=2,
-            arrow_size=(10, 18, 8),
+            arrow_size=(10, 14, 8),
             arrow_color="black",
-            density=0.8,
+            density=0.5,
             show=False,
             ax=axs_left[i, 0],
-            title=method,
+            title=METHODS_DICT[method],
         )
         if method != "tidesurf":
             cax = axs_left[i, 0].inset_axes([0.05, 0.15, 0.2, 0.04])
@@ -1136,14 +1136,14 @@ def figure_5():
             vmax=1,
             sort_order=False,
             size=10,
-            alpha=0.5,
+            alpha=1,
             arrow_length=2,
-            arrow_size=(10, 18, 8),
+            arrow_size=(10, 14, 8),
             arrow_color="black",
-            density=0.8,
+            density=0.5,
             show=False,
             ax=axs_left[i, 1],
-            title=method,
+            title=METHODS_DICT[method],
         )
         if method != "tidesurf":
             cax = axs_left[i, 1].inset_axes([0.6, 0.25, 0.2, 0.04])
@@ -1285,14 +1285,14 @@ def supplementary_figure_4():
             vmax=1,
             sort_order=False,
             size=10,
-            alpha=0.5,
+            alpha=1,
             arrow_length=2,
-            arrow_size=(10, 18, 8),
+            arrow_size=(10, 14, 8),
             arrow_color="black",
-            density=0.8,
+            density=0.5,
             show=False,
             ax=axs_left[i, 0],
-            title=method,
+            title=METHODS_DICT[method],
         )
         if method != "tidesurf":
             cax = axs_left[i, 0].inset_axes([0.6, 0.2, 0.25, 0.04])
@@ -1339,14 +1339,14 @@ def supplementary_figure_4():
             vmax=1,
             sort_order=False,
             size=5,
-            alpha=0.5,
+            alpha=1,
             arrow_length=2,
-            arrow_size=(10, 18, 8),
+            arrow_size=(10, 14, 8),
             arrow_color="black",
-            density=0.8,
+            density=0.5,
             show=False,
             ax=axs_left[i, 1],
-            title=method,
+            title=METHODS_DICT[method],
         )
         if method != "tidesurf":
             cax = axs_left[i, 1].inset_axes([0.7, 0.2, 0.2, 0.04])
@@ -1457,7 +1457,7 @@ def figure_6():
             arrowsize=8,
             show=False,
             ax=axs[i, 0],
-            title=method,
+            title=METHODS_DICT[method],
         )
         axs[i, 0].axis("equal")
         axs[i, 0].set_xlabel("")
@@ -1489,7 +1489,7 @@ def figure_6():
             arrowsize=8,
             show=False,
             ax=axs[i, 1],
-            title=method,
+            title=METHODS_DICT[method],
         )
         axs[i, 1].axis("equal")
         axs[i, 1].set_xlabel("")
@@ -1554,7 +1554,7 @@ def supplementary_figure_5():
             arrowsize=8,
             show=False,
             ax=axs[i, 0],
-            title=method,
+            title=METHODS_DICT[method],
         )
         axs[i, 0].axis("equal")
         axs[i, 0].set_xlabel("")
@@ -1586,7 +1586,7 @@ def supplementary_figure_5():
             arrowsize=8,
             show=False,
             ax=axs[i, 1],
-            title=method,
+            title=METHODS_DICT[method],
         )
         axs[i, 1].axis("equal")
         axs[i, 1].set_xlabel("")
@@ -1629,11 +1629,8 @@ def supplementary_figure_6():
         x="n_reads",
         y="runtime_hours",
         hue="method",
-        hue_order=["velocyto", "tidesurf"],
-        palette=[
-            mpl.cm.get_cmap("Dark2").colors[0],
-            mpl.cm.get_cmap("Dark2").colors[2],
-        ],
+        hue_order=["velocyto", "alevin-fry", "starsolo", "tidesurf"],
+        palette=PALETTE[:4],
         err_style="bars",
         errorbar="sd",
         ax=axs[0],
@@ -1643,18 +1640,15 @@ def supplementary_figure_6():
         mpl.ticker.FuncFormatter(lambda x, _: f"{x / 1e6:.0f}")
     )
     axs[0].set_ylabel("run time [hours]")
-    axs[0].legend(loc="upper left", markerscale=1.2)
+    axs[0].get_legend().remove()
 
     sns.lineplot(
         run_metrics,
         x="n_reads",
         y="memory",
         hue="method",
-        hue_order=["velocyto", "tidesurf"],
-        palette=[
-            mpl.cm.get_cmap("Dark2").colors[0],
-            mpl.cm.get_cmap("Dark2").colors[2],
-        ],
+        hue_order=["velocyto", "alevin-fry", "starsolo", "tidesurf"],
+        palette=PALETTE[:4],
         err_style="bars",
         errorbar="sd",
         ax=axs[1],
@@ -1666,6 +1660,16 @@ def supplementary_figure_6():
         mpl.ticker.FuncFormatter(lambda x, _: f"{x / 1e6:.0f}")
     )
     axs[1].set_ylabel("memory [GB]")
+
+    handles, labels = axs[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        [METHODS_DICT[lab] for lab in labels],
+        loc="outside lower center",
+        ncols=4,
+        markerscale=1.2,
+    )
+
     for sub_fig, lab in zip(sub_figs, string.ascii_uppercase[: len(sub_figs)]):
         sub_fig.text(0.015, 0.98, lab, **AXLAB_KWS)
 
