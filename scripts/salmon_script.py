@@ -1,7 +1,6 @@
+import argparse
 import os
 from typing import List, Literal
-
-import argparse
 
 
 def run_alevin_fry(
