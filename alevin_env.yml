@@ -4,9 +4,11 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  - alevin-fry
+  - python=3.10
+  - numpy=1.24.4
+  - alevin-fry=0.8.2
   - salmon=1.10.2
   - pip
   - bedtools
   - pip:
-      - pyroe
+      - pyroe==0.9.3
