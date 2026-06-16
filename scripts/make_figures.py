@@ -2,6 +2,7 @@ import os
 import string
 import sys
 from collections.abc import Iterable, Sequence
+from itertools import combinations
 from typing import Dict, Optional, Union
 
 import matplotlib as mpl
@@ -12,6 +13,8 @@ import scvelo as scv
 import seaborn as sns
 from matplotlib import pyplot as plt
 from scipy import stats
+from statannotations.Annotator import Annotator
+from statsmodels.stats.multitest import multipletests
 
 sys.path.append("../notebooks")
 from utils import cosine
@@ -87,7 +90,7 @@ SEQ_TYPES = ["3'", "5'"]
 SPLICE_STATES = ["spliced", "unspliced", "ambiguous"]
 
 
-def read_dataframes(name: str, datasets: Iterable = DATASETS_ORDER):
+def read_dataframes(name: str, datasets: Iterable = DATASETS_ORDER) -> pd.DataFrame:
     df = (
         pd.concat(
             {
@@ -109,19 +112,23 @@ def split_boxplot(
     y_label: Optional[str] = None,
     hue: str = "method",
     palette: str = "Dark2",
+    test_results: Optional[pd.DataFrame] = None,
+    pairs: Optional[Sequence] = None,
+    show_nonsignificant: bool = False,
 ):
     axs = sub_fig.subplots(1, 2, sharey=True)
     methods = data[hue].unique()
     for i, (seq_type, d_order) in enumerate(
         zip(SEQ_TYPES, [DATASETS_ORDER[:2], DATASETS_ORDER[2:]])
     ):
+        hue_order = [x for x in METHODS_ORDER if x in methods]
         sns.boxplot(
             data[data["dataset"].isin(d_order)],
             x="dataset",
             y=y,
             hue=hue,
             order=d_order,
-            hue_order=[x for x in METHODS_ORDER if x in methods],
+            hue_order=hue_order,
             palette=palette,
             showfliers=False,
             ax=axs[i],
@@ -141,6 +148,79 @@ def split_boxplot(
             ha="right",
             rotation_mode="anchor",
         )
+
+    if test_results is not None:
+        for i, (seq_type, d_order) in enumerate(
+            zip(SEQ_TYPES, [DATASETS_ORDER[:2], DATASETS_ORDER[2:]])
+        ):
+            pval_df = test_results[test_results["dataset"].isin(d_order)]
+            if pairs is not None:
+                pvals = []
+                pairs_ = []
+                for dataset in d_order:
+                    for method_1, method_2 in pairs:
+                        pval = pval_df.loc[
+                            (pval_df["dataset"] == dataset)
+                            & (pval_df["method_1"] == method_1)
+                            & (pval_df["method_2"] == method_2),
+                            "p_adj",
+                        ].item()
+                        if show_nonsignificant and pval < 0.05:
+                            continue
+                        pairs_.append(((dataset, method_1), (dataset, method_2)))
+                        pvals.append(pval)
+                line_width = 0.75
+                fontsize = 8
+                if not pairs_:
+                    pairs_ = [tuple((d_order[0], m) for m in pairs[0])]
+                    pvals = [1.0]
+                    line_width = 0.0
+                    fontsize = 0
+                # FIXME: use same annotator for both subplots -> only update pairs!
+                annot = Annotator(
+                    axs[i],
+                    pairs_,
+                    data=data[data["dataset"].isin(d_order)],
+                    x="dataset",
+                    y=y,
+                    order=d_order,
+                    hue=hue,
+                    hue_order=hue_order,
+                    verbose=False,
+                )
+                annot.configure(
+                    test=None,
+                    comparisons_correction=None,
+                    hide_non_significant=not show_nonsignificant,
+                    line_height=0.02,
+                    line_width=line_width,
+                    fontsize=fontsize,
+                ).set_pvalues(pvals).annotate()
+            else:
+                boxes = [box for container in axs[i].containers for box in container]
+                ymin, ymax = axs[i].get_ylim()
+                for idx, box in enumerate(boxes):
+                    whisker = box.whiskers[1]
+                    x_val = whisker.get_xdata()[1]
+                    y_val = whisker.get_ydata().copy()[1] + (ymax - ymin) / 50
+                    method_idx = idx // len(d_order)
+                    dataset_idx = idx % len(d_order)
+
+                    pval = pval_df.loc[
+                        (pval_df["dataset"] == d_order[dataset_idx])
+                        & (pval_df["method"] == hue_order[method_idx]),
+                        "p_adj",
+                    ].item()
+                    txt = "ns"
+                    if pval < 1e-3:
+                        txt = "***"
+                    elif pval < 1e-2:
+                        txt = "**"
+                    elif pval < 5e-2:
+                        txt = "*"
+                    axs[i].annotate(
+                        txt, (x_val, y_val), va="bottom", ha="center", fontsize=6
+                    )
     sns.despine(ax=axs[-1], left=True)
     axs[-1].tick_params(axis="y", which="both", left=False)
     if y_label is not None:
@@ -797,6 +877,38 @@ def figure_3():
     counts_diff = read_dataframes("counts_diff")
     counts_corr = read_dataframes("counts_corr_cellranger")
 
+    # Compare count distributions
+    pairs = list(combinations(METHODS_ORDER[:5], 2))
+    test_results_counts = []
+    for dataset, df in total_counts[total_counts["genes"] == "all"].groupby("dataset"):
+        for method_1, method_2 in pairs:
+            _, p = stats.mannwhitneyu(
+                df.loc[df["method"] == method_1, "counts"],
+                df.loc[df["method"] == method_2, "counts"],
+                alternative="two-sided",
+            )
+            test_results_counts.append(
+                {"dataset": dataset, "method_1": method_1, "method_2": method_2, "p": p}
+            )
+    test_results_counts = pd.DataFrame(test_results_counts)
+    test_results_counts["p_adj"] = multipletests(
+        test_results_counts["p"], method="bonferroni"
+    )[1]
+    test_results_counts.to_csv("../out/counts_mann-whitney.csv")
+
+    test_results_diff = []
+    for dataset, df in counts_diff[counts_diff["genes"] == "all"].groupby("dataset"):
+        for method in METHODS_ORDER[:4]:
+            _, p = stats.ttest_1samp(
+                df.loc[df["method"] == method, "difference"], 0, alternative="two-sided"
+            )
+            test_results_diff.append({"dataset": dataset, "method": method, "p": p})
+    test_results_diff = pd.DataFrame(test_results_diff)
+    test_results_diff["p_adj"] = multipletests(
+        test_results_diff["p"], method="bonferroni"
+    )[1]
+    test_results_diff.to_csv("../out/difference_t-test.csv")
+
     # Make figure
     fig = plt.figure(figsize=(FIG_WIDTH, FIG_WIDTH / 3), layout="constrained")
     sub_figs = fig.subfigures(1, 3)
@@ -805,6 +917,9 @@ def figure_3():
         total_counts[total_counts["genes"] == "all"],
         "counts",
         palette=PALETTE,
+        test_results=test_results_counts,
+        pairs=pairs,
+        show_nonsignificant=True,
     )
     split_boxplot(
         sub_figs[1],
@@ -850,14 +965,39 @@ def figure_4():
     # Total spliced/unspliced/ambiguous counts per cell
     sub_figs_top = sub_figs[0].subfigures(1, 3)
     for sub_fig, splice_state in zip(sub_figs_top, SPLICE_STATES):
+        data = spliced_unspliced_counts[
+            (spliced_unspliced_counts["genes"] == "all")
+            & (spliced_unspliced_counts["splice_state"] == splice_state)
+        ]
+        # Compare count distributions
+        pairs = list(combinations(METHODS_ORDER[:4], 2))
+        test_results = []
+        for dataset, df in data.groupby("dataset"):
+            for method_1, method_2 in pairs:
+                _, p = stats.mannwhitneyu(
+                    df.loc[df["method"] == method_1, "counts"],
+                    df.loc[df["method"] == method_2, "counts"],
+                    alternative="two-sided",
+                )
+                test_results.append(
+                    {
+                        "dataset": dataset,
+                        "method_1": method_1,
+                        "method_2": method_2,
+                        "p": p,
+                    }
+                )
+        test_results = pd.DataFrame(test_results)
+        test_results["p_adj"] = multipletests(test_results["p"], method="bonferroni")[1]
+        test_results.to_csv(f"../out/counts_{splice_state}_mann-whitney.csv")
         split_boxplot(
             sub_fig,
-            spliced_unspliced_counts[
-                (spliced_unspliced_counts["genes"] == "all")
-                & (spliced_unspliced_counts["splice_state"] == splice_state)
-            ],
+            data,
             "counts",
             palette=PALETTE,
+            test_results=test_results,
+            pairs=pairs,
+            show_nonsignificant=True,
         )
         sub_fig.suptitle(splice_state, size=10)
         if splice_state != SPLICE_STATES[0]:
@@ -874,15 +1014,40 @@ def figure_4():
     # Total spliced/unspliced/ambiguous counts ratios per cell
     sub_figs_center = sub_figs[1].subfigures(1, 3)
     for sub_fig, splice_state in zip(sub_figs_center, SPLICE_STATES):
+        data = spliced_unspliced_ratios[
+            (spliced_unspliced_ratios["genes"] == "all")
+            & (spliced_unspliced_ratios["splice_state"] == splice_state)
+        ]
+        # Compare count ratio distributions
+        pairs = list(combinations(METHODS_ORDER[:4], 2))
+        test_results = []
+        for dataset, df in data.groupby("dataset"):
+            for method_1, method_2 in pairs:
+                _, p = stats.mannwhitneyu(
+                    df.loc[df["method"] == method_1, "ratio"],
+                    df.loc[df["method"] == method_2, "ratio"],
+                    alternative="two-sided",
+                )
+                test_results.append(
+                    {
+                        "dataset": dataset,
+                        "method_1": method_1,
+                        "method_2": method_2,
+                        "p": p,
+                    }
+                )
+        test_results = pd.DataFrame(test_results)
+        test_results["p_adj"] = multipletests(test_results["p"], method="bonferroni")[1]
         split_boxplot(
             sub_fig,
-            spliced_unspliced_ratios[
-                (spliced_unspliced_ratios["genes"] == "all")
-                & (spliced_unspliced_ratios["splice_state"] == splice_state)
-            ],
+            data,
             "ratio",
             palette=PALETTE,
+            test_results=test_results,
+            pairs=pairs,
+            show_nonsignificant=True,
         )
+        test_results.to_csv(f"../out/ratio_{splice_state}_mann-whitney.csv")
         sub_fig.suptitle(splice_state, size=10)
         if splice_state != SPLICE_STATES[0]:
             sub_fig.get_axes()[0].set_ylabel("")
@@ -950,6 +1115,23 @@ def supplementary_figure_3():
     # Difference in spliced/unspliced/ambiguous counts per cell
     sub_figs_top = sub_figs[0].subfigures(1, 3)
     for sub_fig, splice_state in zip(sub_figs_top, SPLICE_STATES):
+        test_results_diff = []
+        for dataset, df in spliced_unspliced_diff[
+            (spliced_unspliced_diff["genes"] == "all")
+            & (spliced_unspliced_diff["splice_state"] == splice_state)
+        ].groupby("dataset"):
+            for method in METHODS_ORDER[:3]:
+                _, p = stats.ttest_1samp(
+                    df.loc[df["method"] == method, "diff"],
+                    0,
+                    alternative="two-sided",
+                )
+                test_results_diff.append({"dataset": dataset, "method": method, "p": p})
+        test_results_diff = pd.DataFrame(test_results_diff)
+        test_results_diff["p_adj"] = multipletests(
+            test_results_diff["p"], method="bonferroni"
+        )[1]
+        test_results_diff.to_csv(f"../out/difference_{splice_state}_t-test.csv")
         split_boxplot(
             sub_fig,
             spliced_unspliced_diff[
@@ -1679,17 +1861,17 @@ def supplementary_figure_6():
 
 def main():
     os.makedirs(FIG_DIR, exist_ok=True)
-    figure_1()
-    supplementary_figure_1()
-    supplementary_figure_2()
-    figure_3()
+    # figure_1()
+    # supplementary_figure_1()
+    # supplementary_figure_2()
+    # figure_3()
     figure_4()
-    supplementary_figure_3()
-    figure_5()
-    supplementary_figure_4()
-    figure_6()
-    supplementary_figure_5()
-    supplementary_figure_6()
+    # supplementary_figure_3()
+    # figure_5()
+    # supplementary_figure_4()
+    # figure_6()
+    # supplementary_figure_5()
+    # supplementary_figure_6()
 
 
 if __name__ == "__main__":
