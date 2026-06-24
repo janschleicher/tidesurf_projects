@@ -22,7 +22,7 @@ from utils import cosine
 # Set up plotting parameters
 sc.set_figure_params(vector_friendly=True, dpi_save=400, scanpy=False, fontsize=10)
 scv.set_figure_params(vector_friendly=True, dpi_save=400, fontsize=10)
-plt.style.use("matplotlibrc.txt")
+plt.style.use("matplotlibrc")
 AXLAB_KWS = {"fontsize": 12, "fontweight": "bold", "va": "top", "ha": "left"}
 BOXPLOT_PROPS = {
     prop: {"edgecolor" if prop == "boxprops" else "color": "k"}
@@ -619,7 +619,7 @@ def figure_1():
     sub_figs[2].supxlabel("Cell Ranger counts")
     sub_figs[2].supylabel("velocyto unspliced counts")
 
-    fig.savefig(os.path.join(FIG_DIR, "fig1"))
+    fig.savefig(os.path.join(FIG_DIR, "Fig1"), pil_kwargs=PIL_KWARGS)
     plt.close()
 
 
@@ -818,7 +818,7 @@ def supplementary_figure_1():
             **AXLAB_KWS,
         )
 
-    fig.savefig(os.path.join(FIG_DIR, "s1fig"))
+    fig.savefig(os.path.join(FIG_DIR, "S1_Fig"), pil_kwargs=PIL_KWARGS)
     plt.close()
 
 
@@ -867,7 +867,7 @@ def supplementary_figure_2():
     fig.supxlabel("Cell Ranger counts")
     fig.supylabel("Cell Ranger counts")
 
-    fig.savefig(os.path.join(FIG_DIR, "s2fig"))
+    fig.savefig(os.path.join(FIG_DIR, "S2_Fig"), pil_kwargs=PIL_KWARGS)
     plt.close()
 
 
@@ -948,7 +948,7 @@ def figure_3():
         sub_figs[i].text(
             0.02, 0.98, label, transform=sub_figs[i].transSubfigure, **AXLAB_KWS
         )
-    fig.savefig(os.path.join(FIG_DIR, "fig3"))
+    fig.savefig(os.path.join(FIG_DIR, "Fig3"), pil_kwargs=PIL_KWARGS)
     plt.close()
 
 
@@ -1099,7 +1099,7 @@ def figure_4():
             transform=sub_fig.transSubfigure,
             **AXLAB_KWS,
         )
-    fig.savefig(os.path.join(FIG_DIR, "fig4"))
+    fig.savefig(os.path.join(FIG_DIR, "Fig4"), pil_kwargs=PIL_KWARGS)
     plt.close()
 
 
@@ -1195,7 +1195,7 @@ def supplementary_figure_3():
             transform=sub_fig.transSubfigure,
             **AXLAB_KWS,
         )
-    fig.savefig(os.path.join(FIG_DIR, "s3fig"))
+    fig.savefig(os.path.join(FIG_DIR, "S3_Fig"), pil_kwargs=PIL_KWARGS)
     plt.close()
 
 
@@ -1400,7 +1400,7 @@ def figure_5():
         ),
         **AXLAB_KWS,
     )
-    fig.savefig(os.path.join(FIG_DIR, "fig5"))
+    fig.savefig(os.path.join(FIG_DIR, "Fig5"), pil_kwargs=PIL_KWARGS)
     plt.close()
 
 
@@ -1603,7 +1603,7 @@ def supplementary_figure_4():
         ),
         **AXLAB_KWS,
     )
-    fig.savefig(os.path.join(FIG_DIR, "s4fig"))
+    fig.savefig(os.path.join(FIG_DIR, "S4_Fig"), pil_kwargs=PIL_KWARGS)
     plt.close()
 
 
@@ -1696,7 +1696,7 @@ def figure_6():
             **AXLAB_KWS,
         )
 
-    fig.savefig(os.path.join(FIG_DIR, "fig6"))
+    fig.savefig(os.path.join(FIG_DIR, "Fig6"), pil_kwargs=PIL_KWARGS)
     plt.close()
 
 
@@ -1791,7 +1791,7 @@ def supplementary_figure_5():
             **AXLAB_KWS,
         )
 
-    fig.savefig(os.path.join(FIG_DIR, "s5fig"))
+    fig.savefig(os.path.join(FIG_DIR, "S5_Fig"), pil_kwargs=PIL_KWARGS)
     plt.close()
 
 
@@ -1855,23 +1855,23 @@ def supplementary_figure_6():
     for sub_fig, lab in zip(sub_figs, string.ascii_uppercase[: len(sub_figs)]):
         sub_fig.text(0.015, 0.98, lab, **AXLAB_KWS)
 
-    fig.savefig(os.path.join(FIG_DIR, "s6fig"))
+    fig.savefig(os.path.join(FIG_DIR, "S6_Fig"), pil_kwargs=PIL_KWARGS)
     plt.close()
 
 
 def main():
     os.makedirs(FIG_DIR, exist_ok=True)
-    # figure_1()
-    # supplementary_figure_1()
-    # supplementary_figure_2()
-    # figure_3()
+    figure_1()
+    supplementary_figure_1()
+    supplementary_figure_2()
+    figure_3()
     figure_4()
-    # supplementary_figure_3()
-    # figure_5()
-    # supplementary_figure_4()
-    # figure_6()
-    # supplementary_figure_5()
-    # supplementary_figure_6()
+    supplementary_figure_3()
+    figure_5()
+    supplementary_figure_4()
+    figure_6()
+    supplementary_figure_5()
+    supplementary_figure_6()
 
 
 if __name__ == "__main__":
